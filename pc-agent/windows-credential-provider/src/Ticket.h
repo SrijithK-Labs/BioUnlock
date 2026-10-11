@@ -18,3 +18,6 @@ std::wstring TicketFilePath();
 // Reads, DPAPI-unprotects and validates the ticket. Returns std::nullopt when the
 // file is absent, unreadable, malformed, or expired. Never throws.
 std::optional<TicketData> ReadUnlockTicket();
+
+// Deletes the ticket file, making a consumed ticket single-use. Never throws.
+void ClearUnlockTicket();

@@ -388,7 +388,9 @@ IFACEMETHODIMP CBioUnlockCredential::UnAdvise() {
 
 IFACEMETHODIMP CBioUnlockCredential::SetSelected(BOOL* pbAutoLogon) {
     if (pbAutoLogon) {
-        *pbAutoLogon = FALSE;
+        // Auto-logon as soon as the (default) tile is selected while a phone
+        // approval is pending. The ticket is short-lived, so this is safe.
+        *pbAutoLogon = _state->Snapshot().has_value() ? TRUE : FALSE;
     }
     return S_OK;
 }
@@ -527,6 +529,18 @@ IFACEMETHODIMP CBioUnlockCredential::GetSerialization(
     }
 
     *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
+
+    // Consume the ticket: it is single-use. Drop the cached copy too so a stale
+    // password does not linger in memory longer than necessary.
+    ClearUnlockTicket();
+    {
+        std::lock_guard<std::mutex> lock(_state->mutex);
+        if (_state->ticket) {
+            SecureZeroMemory(_state->ticket->password.data(),
+                             _state->ticket->password.size() * sizeof(wchar_t));
+            _state->ticket.reset();
+        }
+    }
     return S_OK;
 }
 

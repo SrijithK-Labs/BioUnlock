@@ -101,6 +101,10 @@ std::wstring TicketFilePath() {
     return ProgramDataDir() + L"\\BioUnlock\\" + BIOUNLOCK_TICKET_FILENAME;
 }
 
+void ClearUnlockTicket() {
+    DeleteFileW(TicketFilePath().c_str());
+}
+
 std::optional<TicketData> ReadUnlockTicket() {
     auto blob = ReadFileBytes(TicketFilePath());
     if (!blob) {
