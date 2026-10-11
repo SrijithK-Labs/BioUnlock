@@ -15,7 +15,7 @@ from app.api.routes import health, well_known
 from app.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.rate_limit import RateLimiter
-from app.core.security import ServerSigningKey
+from app.core.server_identity import load_or_create_signing_key
 from app.database import create_engine_for_url, make_session_factory
 from app.logging import configure_logging
 from app.services.delivery import ConnectionManager
@@ -30,7 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     engine = create_engine_for_url(settings.database_url)
     session_factory = make_session_factory(engine)
-    server_key = ServerSigningKey(settings.resolved_signing_key_path)
+    server_key = load_or_create_signing_key(session_factory)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):

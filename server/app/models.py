@@ -182,3 +182,21 @@ class SecurityEvent(Base):
     detail: Mapped[str] = mapped_column(Text, default="")
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ServerConfig(Base):
+    """A single (``id == 1``) row holding server-wide identity.
+
+    Today this stores the Ed25519 signing key so the server keeps one stable
+    identity across deploys/restarts even on hosts with an ephemeral filesystem
+    (e.g. serverless), without needing a signing-key env var.
+    """
+
+    __tablename__ = "server_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    signing_key_pem: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

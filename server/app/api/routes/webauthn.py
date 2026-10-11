@@ -12,6 +12,7 @@ from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 
 from app.api.deps import client_ip
 from app.core.rate_limit import rate_limit
+from app.core.rp import allowed_origins_for, resolve_rp_id
 from app.core.time import as_utc
 from app.core.webauthn_service import (
     WebAuthnError,
@@ -43,9 +44,10 @@ def register_begin(
     db: Session = Depends(get_db),
 ) -> RegistrationBeginResponse:
     settings = request.app.state.settings
+    rp_id = resolve_rp_id(request, settings)
     challenge_bytes = secrets.token_bytes(32)
     options, _ = build_registration_options(
-        rp_id=settings.rp_id,
+        rp_id=rp_id,
         rp_name=settings.rp_name,
         account_id=SINGLE_USER_ID,
         account_email=settings.rp_name,
@@ -56,7 +58,7 @@ def register_begin(
         id=new_uuid(),
         purpose=ChallengePurpose.registration,
         challenge=bytes_to_base64url(challenge_bytes),
-        rp_id=settings.rp_id,
+        rp_id=rp_id,
         expires_at=expires_at,
     )
     db.add(record)
@@ -64,7 +66,7 @@ def register_begin(
     return RegistrationBeginResponse(
         challenge_id=record.id,
         options=options,
-        rp_id=settings.rp_id,
+        rp_id=rp_id,
         expires_at=expires_at,
     )
 
@@ -88,8 +90,8 @@ def register_complete(
         result = verify_registration(
             credential=payload.credential,
             expected_challenge=base64url_to_bytes(challenge.challenge),
-            rp_id=settings.rp_id,
-            allowed_origins=settings.allowed_origins,
+            rp_id=challenge.rp_id,
+            allowed_origins=allowed_origins_for(settings, challenge.rp_id),
         )
     except WebAuthnError as exc:
         record_event(

@@ -37,19 +37,22 @@ git status --short          # no .env should ever appear
 git ls-files | Select-String -Pattern '\.env$|\.pem$|\.key$|signing'
 ```
 
-## Environment variables to set in Vercel
+## Environment variables
 
-| Variable | Example | Notes |
+Only the **Postgres integration** is actually required. Connect it and the app
+does the rest — no other env vars are needed:
+
+| Variable | Required? | Notes |
 | --- | --- | --- |
-| `BIO_ENVIRONMENT` | `production` | |
-| `BIO_SECRET_KEY` | *(long random string)* | not a root of trust, but must not be the default |
-| `BIO_DATABASE_URL` | `postgresql+psycopg://user:pw@host/db` | optional — auto-detected from the Postgres integration (see caveat 1) |
-| `BIO_RP_ID` | `your-app.vercel.app` | effective domain, no scheme/port |
-| `BIO_ALLOWED_ORIGINS` | `https://your-app.vercel.app,android:apk-key-hash:5DVyir7YN4Fg8vd14Av1I_5Ao1FkP4pMZXdn0638qAI` | WebAuthn origins |
-| `BIO_CORS_ORIGINS` | `https://your-app.vercel.app` | |
-| `BIO_SIGNING_KEY` | *(PEM contents)* | **required** — see caveat 2 |
-| `BIO_COOKIE_SECURE` | `true` | behind HTTPS |
-| `BIO_RATE_LIMIT_ENABLED` | `true` | |
+| *(Postgres integration)* | **yes** | Storage → Marketplace → **Postgres (Neon)**; the connection string is auto-detected (see caveat 1) |
+| `BIO_DATABASE_URL` | optional | Override the auto-detected database URL |
+| `BIO_SIGNING_KEY` | optional | The server key is generated and stored in the database by default (see caveat 2) |
+| `BIO_RP_ID` | optional | Defaults to `auto`: derived from the request host |
+| `BIO_ALLOWED_ORIGINS` | optional | Extra origins; the current host and the Android app origin are added automatically |
+| `BIO_ENVIRONMENT` | optional | Auto-set from Vercel's `VERCEL_ENV` (keeps `/docs` private in production) |
+| `BIO_SECRET_KEY` | recommended | Not a root of trust, but must not be the default |
+| `BIO_CORS_ORIGINS` | optional | Browser tooling only |
+| `BIO_COOKIE_SECURE` | optional | `true` behind HTTPS |
 
 ## Caveats
 
@@ -68,18 +71,14 @@ git ls-files | Select-String -Pattern '\.env$|\.pem$|\.key$|signing'
    .\.venv\Scripts\python.exe -m alembic upgrade head
    ```
 
-2. **The server signing key must stay stable.** PC agents pin this Ed25519 key
-   at pairing; if it changes they refuse envelopes. The default file location is
-   ephemeral on Vercel, so provide the key as the `BIO_SIGNING_KEY` env var.
-   Generate a key and copy the PEM into the Vercel variable (literal `\n` is
-   accepted for a single-line value):
+   (If the direct/unpooled host will not resolve, use the pooled host — it works
+   for DDL too.)
 
-   ```powershell
-   cd server
-   .\.venv\Scripts\python.exe -c "from pathlib import Path; from app.core.security import ServerSigningKey; k=ServerSigningKey(Path('signing.pem'), overwrite=True); print(k.path.read_text())"
-   ```
-
-   Keep the same value across deploys; never commit it.
+2. **The server signing key stays stable with no setup.** PC agents pin this
+   Ed25519 key at pairing, so it must not change across restarts/deploys. The app
+   generates a key on first use and stores it in the `server_config` row, so it
+   survives cold starts automatically. To inject your own instead (e.g. from a
+   secret manager), set `BIO_SIGNING_KEY` to the PEM (literal `\n` accepted).
 
 3. **WebSockets.** The agent's primary channel is a WebSocket with an automatic
    REST `inbox` fallback, so delivery keeps working even if the platform does

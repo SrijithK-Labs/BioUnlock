@@ -15,6 +15,8 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_RP_ID = "localhost"
+AUTO_RP_ID = "auto"
+DEFAULT_ENVIRONMENT = "development"
 DEFAULT_DATABASE_URL = "sqlite:///./biounlock.db"
 
 # Connection strings injected by hosted Postgres integrations (e.g. Vercel +
@@ -86,7 +88,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    environment: str = "development"
+    environment: str = DEFAULT_ENVIRONMENT
     log_level: str = "INFO"
 
     # Application secrets. ``secret_key`` must be replaced in production. It is
@@ -99,11 +101,12 @@ class Settings(BaseSettings):
 
     # Optional path to a Digital Asset Links file served at
     # ``/.well-known/assetlinks.json`` so Android can associate the mobile app
-    # with this WebAuthn relying party domain.
+    # with this WebAuthn relying party domain. When unset, a bundled default is
+    # served (see :mod:`app.static_assets`).
     asset_links_path: str | None = None
 
     # WebAuthn relying party
-    rp_id: str = DEFAULT_RP_ID
+    rp_id: str = AUTO_RP_ID
     rp_name: str = "BioUnlock"
     # Comma separated list of allowed WebAuthn origins (full origins, e.g.
     # "https://app.example.com" or "android:apk-key-hash:..." for native apps).
@@ -129,6 +132,17 @@ class Settings(BaseSettings):
     @classmethod
     def _split_lists(cls, v: object) -> object:
         return _parse_list(v)
+
+    @model_validator(mode="after")
+    def _resolve_environment(self) -> Settings:
+        # Vercel exposes ``VERCEL_ENV`` (production/preview/development). Adopt
+        # it so production does not publicly serve the API docs by accident,
+        # without requiring a hand-set BIO_ENVIRONMENT.
+        if self.environment == DEFAULT_ENVIRONMENT:
+            vercel_env = os.environ.get("VERCEL_ENV")
+            if vercel_env:
+                self.environment = vercel_env
+        return self
 
     @model_validator(mode="after")
     def _resolve_database_url(self) -> Settings:

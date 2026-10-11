@@ -52,23 +52,45 @@ class ServerSigningKey:
 
     def __init__(
         self,
-        signing_key_path: Path,
+        signing_key_path: Path | None = None,
         load: bool = True,
         overwrite: bool = False,
+        private_key: Ed25519PrivateKey | None = None,
     ) -> None:
         self._path = signing_key_path
-        self._private_key: Ed25519PrivateKey | None = None
-        if load:
+        self._private_key = private_key
+        if load and private_key is None:
             self._load_or_create(overwrite)
 
     @property
-    def path(self) -> Path:
+    def path(self) -> Path | None:
         return self._path
+
+    @classmethod
+    def generate(cls) -> ServerSigningKey:
+        """Create a fresh in-memory key that is not persisted anywhere yet."""
+        return cls(load=False, private_key=ed25519.Ed25519PrivateKey.generate())
+
+    @classmethod
+    def from_pem(cls, pem: str) -> ServerSigningKey:
+        """Load a key from an Ed25519 PKCS#8 PEM string (no file access)."""
+        return cls(load=False, private_key=cls._load_pem(pem))
+
+    def to_pem(self) -> str:
+        """Serialise the private key as an unencrypted PKCS#8 PEM string."""
+        return self._require_key().private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode("utf-8")
 
     def _load_or_create(self, overwrite: bool) -> None:
         env_pem = os.environ.get(SIGNING_KEY_ENV)
         if env_pem and not overwrite:
             self._private_key = self._load_pem(env_pem)
+            return
+        if self._path is None:
+            self._private_key = ed25519.Ed25519PrivateKey.generate()
             return
         if overwrite or not self._path.exists():
             self._create()

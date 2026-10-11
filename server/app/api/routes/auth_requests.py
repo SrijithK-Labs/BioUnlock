@@ -15,6 +15,7 @@ from app.api.deps import (
     require_active_device,
 )
 from app.core.rate_limit import rate_limit
+from app.core.rp import allowed_origins_for, resolve_rp_id
 from app.core.webauthn_service import (
     WebAuthnError,
     build_authentication_options,
@@ -93,8 +94,9 @@ def create_challenge(
         )
 
     challenge_bytes = secrets.token_bytes(32)
+    rp_id = resolve_rp_id(request, settings)
     options, _ = build_authentication_options(
-        rp_id=settings.rp_id,
+        rp_id=rp_id,
         challenge=challenge_bytes,
         credential_ids=[c.credential_id for c in credentials],
     )
@@ -103,7 +105,7 @@ def create_challenge(
         id=new_uuid(),
         purpose=ChallengePurpose.authentication,
         challenge=bytes_to_base64url(challenge_bytes),
-        rp_id=settings.rp_id,
+        rp_id=rp_id,
         pc_id=device.id,
         expires_at=expires_at,
     )
@@ -112,7 +114,7 @@ def create_challenge(
     return AuthenticationBeginResponse(
         challenge_id=record.id,
         options=options,
-        rp_id=settings.rp_id,
+        rp_id=rp_id,
         expires_at=expires_at,
         pc_id=device.id,
         pc_name=device.name,
@@ -161,8 +163,8 @@ async def create_auth_request(
         result = verify_authentication(
             credential=assertion,
             expected_challenge=base64url_to_bytes(challenge.challenge),
-            rp_id=settings.rp_id,
-            allowed_origins=settings.allowed_origins,
+            rp_id=challenge.rp_id,
+            allowed_origins=allowed_origins_for(settings, challenge.rp_id),
             credential_public_key=credential.public_key,
             current_sign_count=credential.sign_count,
         )
