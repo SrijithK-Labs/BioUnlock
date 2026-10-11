@@ -279,18 +279,21 @@ IFACEMETHODIMP CBioUnlockProvider::GetCredentialCount(DWORD* pdwCount, DWORD* pd
     if (!pdwCount || !pdwDefault || !pbAutoLogonWithDefault) {
         return E_POINTER;
     }
-    // Read the ticket live so a ticket that already exists at first enumeration
-    // (before the watcher's first poll) is honoured.
-    const bool haveTicket = RefreshTicket().has_value();
-    if (haveTicket && (_cpus == CPUS_UNLOCK_WORKSTATION || _cpus == CPUS_LOGON)) {
-        *pdwCount = 1;
-        *pdwDefault = 0;
-        *pbAutoLogonWithDefault = TRUE;
-    } else {
+    // The tile is always offered in the logon/unlock scenarios so the user can see
+    // "Unlock with your phone" next to the built-in sign-in options. It only
+    // auto-submits once a phone approval has produced a ticket.
+    if (_cpus != CPUS_UNLOCK_WORKSTATION && _cpus != CPUS_LOGON) {
         *pdwCount = 0;
         *pdwDefault = CREDENTIAL_PROVIDER_NO_DEFAULT;
         *pbAutoLogonWithDefault = FALSE;
+        return S_OK;
     }
+    // Read the ticket live so a ticket that already exists at first enumeration
+    // (before the watcher's first poll) is honoured.
+    const bool haveTicket = RefreshTicket().has_value();
+    *pdwCount = 1;
+    *pdwDefault = haveTicket ? 0 : CREDENTIAL_PROVIDER_NO_DEFAULT;
+    *pbAutoLogonWithDefault = haveTicket ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -300,7 +303,7 @@ IFACEMETHODIMP CBioUnlockProvider::GetCredentialAt(DWORD dwIndex,
         return E_POINTER;
     }
     *ppcpc = nullptr;
-    if (dwIndex != 0 || !_state->Snapshot().has_value()) {
+    if (dwIndex != 0 || (_cpus != CPUS_UNLOCK_WORKSTATION && _cpus != CPUS_LOGON)) {
         return E_INVALIDARG;
     }
     auto* credential = new (std::nothrow) CBioUnlockCredential(_state, _cpus);
@@ -465,13 +468,13 @@ IFACEMETHODIMP CBioUnlockCredential::GetStringValue(DWORD dwFieldID, PWSTR* ppws
         case FI_LABEL: {
             const bool haveTicket = _state->Snapshot().has_value();
             return SHStrDupW(haveTicket ? L"Unlock approved on your phone"
-                                        : L"Unlock with BioUnlock",
+                                        : L"Unlock with your phone",
                              ppwsz);
         }
         case FI_TILEIMAGE:
             return SHStrDupW(L"", ppwsz);
         case FI_SUBMIT_BUTTON:
-            return SHStrDupW(L"Sign in", ppwsz);
+            return SHStrDupW(L"Unlock", ppwsz);
         default:
             return E_INVALIDARG;
     }
