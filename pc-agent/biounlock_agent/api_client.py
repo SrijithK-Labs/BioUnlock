@@ -46,7 +46,6 @@ class Heartbeat:
     server_time: str
     heartbeat_interval_seconds: int
     paired: bool
-    account_email: str | None
     pending_requests: int
 
 
@@ -189,7 +188,6 @@ class ApiClient:
             server_time=data["server_time"],
             heartbeat_interval_seconds=int(data["heartbeat_interval_seconds"]),
             paired=bool(data["paired"]),
-            account_email=data.get("account_email"),
             pending_requests=int(data.get("pending_requests", 0)),
         )
 

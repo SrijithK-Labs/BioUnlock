@@ -5,7 +5,7 @@ import '../services/api_client.dart';
 import '../services/api_exception.dart';
 import '../services/passkey_service.dart';
 
-/// Manages the account's passkeys (WebAuthn credentials).
+/// Manages the passkeys (WebAuthn credentials) used to authorize PCs.
 class PasskeysController extends ChangeNotifier {
   PasskeysController({
     required ApiClient api,

@@ -73,7 +73,6 @@ def test_heartbeat_uses_signed_device_credential(device_identity):
                 "server_time": "2026-01-01T00:00:00Z",
                 "heartbeat_interval_seconds": 60,
                 "paired": True,
-                "account_email": "user@example.com",
                 "pending_requests": 0,
             },
         )

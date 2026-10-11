@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../config.dart';
 import '../state/app_state.dart';
 
 /// First-run screen: point the app at a self-hosted BioUnlock server.
@@ -13,7 +14,7 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   late final TextEditingController _controller = TextEditingController(
-    text: AppState.defaultServerUrl,
+    text: AppConfig.defaultServerUrl,
   );
 
   @override
@@ -52,8 +53,9 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'BioUnlock is self-hosted. Enter the HTTPS address of your '
-              'BioUnlock server. It is never hardcoded.',
+              'BioUnlock is self-hosted. Enter the address of your BioUnlock '
+              'server, e.g. http://192.168.1.10:8000 or an https://… '
+              'tunnel URL.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -63,7 +65,7 @@ class _SetupScreenState extends State<SetupScreen> {
               autocorrect: false,
               decoration: const InputDecoration(
                 labelText: 'Server URL',
-                hintText: 'https://biounlock.example.com',
+                hintText: 'http://192.168.1.10:8000',
                 border: OutlineInputBorder(),
               ),
             ),

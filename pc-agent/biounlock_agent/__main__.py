@@ -2,12 +2,12 @@
 
 Usage::
 
+    python -m biounlock_agent tray
     python -m biounlock_agent enroll --server-url https://unlock.example.com
     python -m biounlock_agent set-credential
     python -m biounlock_agent run
     python -m biounlock_agent status
     python -m biounlock_agent unenroll
-    python -m biounlock_agent gui
 """
 
 from __future__ import annotations
@@ -135,10 +135,17 @@ def _cmd_clear_credential(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_gui(args: argparse.Namespace) -> int:
-    from biounlock_agent.gui import main as gui_main
+def _cmd_tray(args: argparse.Namespace) -> int:
+    try:
+        from biounlock_agent.tray import main as tray_main
+    except ImportError as exc:  # pragma: no cover - depends on optional deps
+        print(
+            f"The tray app requires 'pystray' and 'Pillow' to be installed: {exc}",
+            file=sys.stderr,
+        )
+        return 1
 
-    return gui_main()
+    return tray_main()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -180,8 +187,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     clearcred.set_defaults(func=_cmd_clear_credential)
 
-    gui = sub.add_parser("gui", help="Launch the setup GUI")
-    gui.set_defaults(func=_cmd_gui)
+    gui = sub.add_parser("tray", help="Launch the system tray application")
+    gui.set_defaults(func=_cmd_tray)
 
     return parser
 
@@ -190,8 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
-        parser.print_help()
-        return 2
+        # Double-clicking the app (or running with no arguments) opens the tray.
+        return _cmd_tray(args)
     return args.func(args)
 
 

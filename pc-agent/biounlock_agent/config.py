@@ -7,12 +7,16 @@ private key) are kept separate and protected by :mod:`biounlock_agent.storage`.
 
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import socket
 from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 APP_DIR_NAME = "BioUnlock"
 ENV_HOME = "BIOUNLOCK_AGENT_HOME"
@@ -66,7 +70,6 @@ class AgentConfig(BaseModel):
     enrolled_at: datetime | None = None
     paired: bool = False
     paired_at: datetime | None = None
-    account_email: str | None = None
 
     @property
     def is_enrolled(self) -> bool:
@@ -78,11 +81,18 @@ class AgentConfig(BaseModel):
 
 
 class ConfigStore:
-    """Load/save :class:`AgentConfig` as JSON with atomic replacement."""
+    """Load/save :class:`AgentConfig` as JSON with atomic replacement.
+
+    Saves are atomic and keep a ``config.json.bak`` copy of the previous good
+    file, so an interrupted write, a crash or a power cut can never lose the
+    saved link. :meth:`load` transparently falls back to the backup and never
+    raises on a corrupt file.
+    """
 
     def __init__(self, home: Path | None = None) -> None:
         self.home = Path(home) if home is not None else default_home()
         self.path = self.home / CONFIG_FILENAME
+        self.backup_path = self.path.with_suffix(".json.bak")
 
     def ensure_home(self) -> Path:
         self.home.mkdir(parents=True, exist_ok=True)
@@ -92,16 +102,39 @@ class ConfigStore:
         return self.path.exists()
 
     def load(self) -> AgentConfig:
-        if not self.path.exists():
-            return AgentConfig()
-        return AgentConfig.model_validate_json(self.path.read_text(encoding="utf-8"))
+        if self.path.exists():
+            config = self._try_load(self.path)
+            if config is not None:
+                return config
+            logger.warning("Configuration file is unreadable; trying the backup")
+        if self.backup_path.exists():
+            config = self._try_load(self.backup_path)
+            if config is not None:
+                logger.warning("Recovered configuration from %s", self.backup_path)
+                return config
+        return AgentConfig()
+
+    @staticmethod
+    def _try_load(path: Path) -> AgentConfig | None:
+        try:
+            return AgentConfig.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
 
     def save(self, config: AgentConfig) -> None:
         self.ensure_home()
+        serialized = config.model_dump_json(indent=2)
         tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(config.model_dump_json(indent=2), encoding="utf-8")
+        tmp.write_text(serialized, encoding="utf-8")
+        # Keep the last known-good file as a backup before replacing it.
+        if self.path.exists():
+            try:
+                shutil.copy2(self.path, self.backup_path)
+            except OSError:
+                pass
         os.replace(tmp, self.path)
 
     def reset(self) -> None:
-        if self.path.exists():
-            self.path.unlink()
+        for path in (self.path, self.backup_path):
+            if path.exists():
+                path.unlink()

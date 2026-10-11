@@ -14,16 +14,6 @@ class SettingsTab extends StatelessWidget {
       body: ListView(
         children: [
           const ListTile(
-            leading: Icon(Icons.account_circle),
-            title: Text('Account'),
-          ),
-          ListTile(
-            leading: const SizedBox(width: 24),
-            title: const Text('Email'),
-            subtitle: Text(state.session?.account.email ?? '—'),
-          ),
-          const Divider(),
-          const ListTile(
             leading: Icon(Icons.dns),
             title: Text('Server'),
           ),
@@ -31,6 +21,8 @@ class SettingsTab extends StatelessWidget {
             leading: const SizedBox(width: 24),
             title: const Text('URL'),
             subtitle: Text(state.serverUrl ?? '—'),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: () => _confirmChangeServer(context, prefill: state.serverUrl),
           ),
           if (info != null) ...[
             ListTile(
@@ -53,40 +45,53 @@ class SettingsTab extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.swap_horiz),
             title: const Text('Change server'),
+            subtitle: const Text('Enter a new API base URL'),
             onTap: () => _confirmChangeServer(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Sign out'),
-            onTap: () => state.logout(),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _confirmChangeServer(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _confirmChangeServer(
+    BuildContext context, {
+    String? prefill,
+  }) async {
+    final controller = TextEditingController(text: prefill ?? '');
+    final save = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Change server?'),
-        content: const Text(
-          'You will be signed out and asked for a new server address.',
+        title: const Text('Server URL'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            hintText: 'http://192.168.1.10:8000',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Change'),
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save'),
           ),
         ],
       ),
     );
-    if (confirmed == true && context.mounted) {
-      await context.read<AppState>().resetServer();
+    if (save == null || !context.mounted) return;
+    final ok = await context.read<AppState>().configureServer(save);
+    if (!context.mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Server updated.')));
     }
   }
 }

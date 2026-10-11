@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models/account.dart';
 import '../models/auth_request.dart';
 import '../models/device.dart';
 import '../models/misc.dart';
@@ -11,16 +10,14 @@ import 'api_exception.dart';
 /// Thin, typed wrapper around the BioUnlock REST API.
 ///
 /// The base URL is supplied by the user at setup time (each deployment is
-/// self-hosted) and never hardcoded.
+/// self-hosted) and never hardcoded. The phone-facing endpoints require no
+/// authentication, so no credentials or authorization headers are sent.
 class ApiClient {
   ApiClient({required this.baseUrl, http.Client? httpClient})
     : _http = httpClient ?? http.Client();
 
   final String baseUrl;
   final http.Client _http;
-
-  /// The bearer token used for account-scoped endpoints.
-  String? token;
 
   Uri _uri(String path) {
     final normalized = baseUrl.endsWith('/')
@@ -34,9 +31,6 @@ class ApiClient {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     };
-    if (token != null) {
-      headers['Authorization'] = 'Bearer $token';
-    }
     if (extra != null) {
       headers.addAll(extra);
     }
@@ -76,27 +70,6 @@ class ApiClient {
   Future<ServerInfo> serverInfo() =>
       _get('/server/info', (d) => ServerInfo.fromJson(d as Map<String, dynamic>));
 
-  // --- Accounts ---
-
-  Future<Session> register(String email, String password) async => Session.fromJson(
-    await _send('POST', '/auth/register', body: {
-      'email': email,
-      'password': password,
-    }) as Map<String, dynamic>,
-  );
-
-  Future<Session> login(String email, String password) async => Session.fromJson(
-    await _send('POST', '/auth/login', body: {
-      'email': email,
-      'password': password,
-    }) as Map<String, dynamic>,
-  );
-
-  Future<void> logout() => _send('POST', '/auth/logout');
-
-  Future<Account> me() async =>
-      Account.fromJson(await _send('GET', '/auth/me') as Map<String, dynamic>);
-
   Future<List<SecurityEvent>> securityEvents({int limit = 50}) async {
     final data = await _send('GET', '/security-events?limit=$limit');
     return (data as List)
@@ -132,6 +105,16 @@ class ApiClient {
       _send('DELETE', '/webauthn/credentials/$id');
 
   // --- Devices / pairing ---
+
+  Future<Map<String, dynamic>> enrollDevice({
+    required String name,
+    required String platform,
+    required String publicKey,
+  }) async => await _send('POST', '/devices/enroll', body: {
+    'name': name,
+    'platform': platform,
+    'public_key': publicKey,
+  }) as Map<String, dynamic>;
 
   Future<List<Device>> listDevices() async {
     final data = await _send('GET', '/devices');

@@ -61,7 +61,6 @@ class AgentStatus:
     device_id: str | None
     device_name: str
     server_url: str | None
-    account_email: str | None
     connected: bool
     processed_count: int
     credential_enrolled: bool
@@ -135,13 +134,19 @@ class Agent:
     # --- enrollment / pairing -----------------------------------------
 
     def enroll(self, server_url: str, *, device_name: str | None = None) -> Enrollment:
-        """Enroll this PC and pin the server signing key (trust on first use)."""
+        """Enroll this PC and pin the server signing key (trust on first use).
+
+        The existing configuration is only replaced after the server responds,
+        and a re-link to the same server for the same device keeps the current
+        pairing rather than dropping it. Nothing is deleted on failure.
+        """
+        previous = self.config
         identity = self.load_or_create_identity()
-        name = (device_name or self.config.device_name or default_device_name()).strip() or default_device_name()
+        name = (device_name or previous.device_name or default_device_name()).strip() or default_device_name()
         client = self._api_factory(server_url=server_url, private_key=identity)
         try:
             info = client.server_info()
-            enrollment = client.enroll(name=name, platform=self.config.platform)
+            enrollment = client.enroll(name=name, platform=previous.platform)
         finally:
             client.close()
 
@@ -150,15 +155,21 @@ class Agent:
                 "server information changed during enrollment; refusing to pin an inconsistent key"
             )
 
+        same_link = (
+            previous.device_id == enrollment.device_id
+            and bool(previous.server_url)
+            and previous.server_url.rstrip("/") == server_url.rstrip("/")
+        )
         self.config = AgentConfig(
             server_url=server_url.rstrip("/"),
             device_id=enrollment.device_id,
             device_name=enrollment.device_name,
-            platform=self.config.platform or "windows",
+            platform=previous.platform or "windows",
             server_signing_public_key=enrollment.server_signing_public_key,
             server_signing_key_fingerprint=enrollment.server_signing_key_fingerprint,
-            enrolled_at=datetime.now(UTC),
-            paired=False,
+            enrolled_at=previous.enrolled_at or datetime.now(UTC),
+            paired=previous.paired if same_link else False,
+            paired_at=previous.paired_at if same_link else None,
         )
         self.config_store.save(self.config)
         self._reset_api()
@@ -172,9 +183,6 @@ class Agent:
         if heartbeat.paired and not self.config.paired:
             self.config.paired = True
             self.config.paired_at = datetime.now(UTC)
-            changed = True
-        if heartbeat.account_email and heartbeat.account_email != self.config.account_email:
-            self.config.account_email = heartbeat.account_email
             changed = True
         if changed:
             self.config_store.save(self.config)
@@ -231,9 +239,9 @@ class Agent:
         status, reason_code = self._execute_operation(verified)
         self._ack(verified.request_id, status=status, reason_code=reason_code)
         logger.info(
-            "Verified authorization request %s for account %s",
+            "Verified authorization request %s (%s)",
             verified.request_id,
-            verified.account_id,
+            verified.operation,
         )
         return ProcessedEnvelope(verified.request_id, status, reason_code)
 
@@ -373,7 +381,6 @@ class Agent:
             device_id=self.config.device_id,
             device_name=self.config.device_name,
             server_url=self.config.server_url,
-            account_email=self.config.account_email,
             connected=self._connected,
             processed_count=self.processed_count,
             credential_enrolled=unlock.has_windows_credential(self.config_store.home),

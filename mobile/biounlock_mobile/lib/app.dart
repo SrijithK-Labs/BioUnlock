@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/setup_screen.dart';
 import 'state/app_state.dart';
@@ -39,9 +38,6 @@ class _RootGate extends StatelessWidget {
     }
     if (!state.isConfigured) {
       return const SetupScreen();
-    }
-    if (!state.isAuthenticated) {
-      return const AuthScreen();
     }
     return const HomeScreen();
   }

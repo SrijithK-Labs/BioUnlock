@@ -41,7 +41,6 @@ def _paired_agent(home, api_factory, replay_store, server_pub_pem, server_finger
         server_signing_public_key=server_pub_pem,
         server_signing_key_fingerprint=server_fingerprint,
         paired=True,
-        account_email="user@example.com",
     )
     return agent
 
@@ -71,6 +70,46 @@ def test_enroll_rejects_inconsistent_server_key(home, fake_api, api_factory, rep
         agent.enroll("http://server")
 
 
+def test_enroll_preserves_pairing_when_relinking_same_server(home, fake_api, api_factory, replay_store):
+    fake_api.server_info_value = ServerInfo("BioUnlock", "0.1.0", "example.com", "FP", "production")
+    fake_api.enroll_value = _enrollment("FP")
+
+    agent = _make_agent(home, api_factory, replay_store)
+    agent.config = AgentConfig(
+        server_url="http://server",
+        device_id="pc-1",
+        device_name="PC",
+        server_signing_public_key="PEM-FP",
+        server_signing_key_fingerprint="FP",
+        paired=True,
+    )
+
+    agent.enroll("http://server/")
+
+    assert agent.config.device_id == "pc-1"
+    assert agent.config.paired is True
+    assert ConfigStore(home).load().paired is True
+
+
+def test_enroll_resets_pairing_when_device_changes(home, fake_api, api_factory, replay_store):
+    fake_api.server_info_value = ServerInfo("BioUnlock", "0.1.0", "example.com", "FP", "production")
+    fake_api.enroll_value = _enrollment("FP")
+
+    agent = _make_agent(home, api_factory, replay_store)
+    agent.config = AgentConfig(
+        server_url="http://server",
+        device_id="old-device",
+        server_signing_public_key="PEM-FP",
+        server_signing_key_fingerprint="FP",
+        paired=True,
+    )
+
+    agent.enroll("http://server")
+
+    assert agent.config.device_id == "pc-1"
+    assert agent.config.paired is False
+
+
 def test_refresh_pairing_persists_state(home, fake_api, api_factory, replay_store, server_pub_pem, server_fingerprint):
     agent = _make_agent(home, api_factory, replay_store)
     agent.config = AgentConfig(
@@ -81,13 +120,12 @@ def test_refresh_pairing_persists_state(home, fake_api, api_factory, replay_stor
         server_signing_key_fingerprint=server_fingerprint,
         paired=False,
     )
-    fake_api.heartbeat_value = Heartbeat("t", 60, paired=True, account_email="user@example.com", pending_requests=2)
+    fake_api.heartbeat_value = Heartbeat("t", 60, paired=True, pending_requests=2)
 
     heartbeat = agent.refresh_pairing()
 
     assert heartbeat.paired is True
     assert agent.config.paired is True
-    assert agent.config.account_email == "user@example.com"
     assert ConfigStore(home).load().paired is True
 
 

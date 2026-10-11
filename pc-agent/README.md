@@ -1,59 +1,116 @@
-# BioUnlock PC agent
+# BioUnlock Windows app
 
 Outbound-only Windows agent. It pairs a PC with your BioUnlock backend, pins the
 server's Ed25519 signing key, independently verifies every signed authorization
 envelope, and reports a truthful result. It never opens an inbound port and never
-stores or transmits a Windows password.
+transmits a Windows password.
 
-> **Status: experimental.** This milestone verifies requests and reports status.
-> It does **not** unlock the Windows logon screen yet (see
-> `../docs/windows-authentication.md`).
+The user-facing app is a **system tray icon** that lets you enter your backend
+URL, link this PC by scanning a QR code with the phone, and start/stop the
+background agent. It starts automatically at login.
 
-## Requirements
+## What it does
 
-- Python 3.11+ on Windows (the agent also runs on other platforms for
-  development, without DPAPI).
-- The backend from `../server` reachable over HTTPS.
+- `remote_unlock` mints a short-lived, single-use ticket that the native Windows
+  Credential Provider reads to sign you in at the logon screen.
+- `remote_lock` locks the workstation (reported as `already_locked` when it
+  already is).
+- The agent reports whether the PC is currently locked/unlocked.
 
-## Install
+## Install (end users)
+
+1. Get `BioUnlock.exe` (download it, or build it with `build.ps1`).
+2. Run the per-user installer:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File install-agent.ps1
+   ```
+
+   It copies the app to `%LOCALAPPDATA%\BioUnlock`, adds it to Start-up, creates
+   a Start Menu shortcut, and launches it. No admin rights are needed for this.
+
+   If Windows **Smart App Control** blocks the unsigned `.exe`, install the
+   source launcher instead (it runs with `pythonw.exe`, which Smart App Control
+   allows):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource
+   ```
+3. Click the tray icon, enter your backend URL, then **Link this PC** and scan
+   the QR code with the phone app.
+4. To unlock the actual Windows logon screen you also need the Credential
+   Provider (below) and a stored Windows credential (**Set Windows password…**
+   in the tray menu, or `python -m biounlock_agent set-credential`).
+
+## Build the app
 
 ```powershell
-cd pc-agent
+powershell -ExecutionPolicy Bypass -File build.ps1
+```
+
+This uses PyInstaller (`BioUnlock.spec`) to produce a single
+`dist\BioUnlock.exe` with no console window.
+
+## Run from source (development)
+
+```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+python -m biounlock_agent tray
 ```
 
-`pywin32` (DPAPI + Windows service) and `PySide6` (GUI) are listed in
-`requirements.txt`. Only the core dependencies (`cryptography`, `httpx`,
-`websockets`, `pydantic`) are needed to run the agent headless.
+`pywin32` (DPAPI + Windows service) and `pystray`/`Pillow` (tray icon) come from
+`requirements.txt`. The agent runs headless on non-Windows platforms for
+development, without DPAPI or tray support.
 
-## Enroll and run (CLI)
+## Host your backend
+
+BioUnlock is **single-owner**: the backend in `../server` is meant to be hosted
+and used by you alone. Deploy it anywhere that runs Python — for example
+[Vercel](https://vercel.com) (serverless) or any small VM — and point both the
+phone app and this Windows app at that URL. See
+[`../docs/deploy-vercel.md`](../docs/deploy-vercel.md) for the environment
+variables to set on the host (so no secrets ever live in the repo).
+
+> **Security note:** anyone who knows your backend URL can attempt to register a
+> passkey and link a PC. Keep the URL private, or put it behind an access
+> control you trust. There is no account system by design.
+
+## Credential Provider (logon-screen unlock)
+
+The native provider is a separate, admin-installed component in
+`windows-credential-provider/`:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File windows-credential-provider\build.ps1
+powershell -ExecutionPolicy Bypass -File windows-credential-provider\install.ps1   # needs admin
+python -m biounlock_agent set-credential
+```
+
+`install-agent.ps1` offers to run the elevated install for you when the provider
+DLL has already been built.
+
+## Command line
+
+```powershell
+python -m biounlock_agent tray             # system tray app (default with no args)
 python -m biounlock_agent enroll --server-url https://unlock.example.com --name "Workstation"
-# scan the printed QR code (or type the pairing code) in the phone app
-
-python -m biounlock_agent run        # foreground agent
-python -m biounlock_agent status     # local status as JSON
-python -m biounlock_agent unenroll   # remove local enrollment + device key
+python -m biounlock_agent run              # foreground agent
+python -m biounlock_agent status           # local status as JSON
+python -m biounlock_agent set-credential   # store the DPAPI-protected Windows credential
+python -m biounlock_agent clear-credential # remove it and any pending ticket
+python -m biounlock_agent unenroll         # remove local enrollment + device key
 ```
-
-## Setup GUI
-
-```powershell
-python -m biounlock_agent gui
-```
-
-Enter the server URL, click **Enroll this PC**, scan the QR code with the phone,
-then **Start agent**.
 
 ## Run as a Windows service
+
+For unlocking before any user logs in, the pywin32 service wrapper is also
+available:
 
 ```powershell
 python -m biounlock_agent.service install
 python -m biounlock_agent.service start
-# ...
 python -m biounlock_agent.service stop
 python -m biounlock_agent.service remove
 ```
@@ -75,10 +132,8 @@ For each delivered envelope the agent checks, in order:
 Only an envelope that passes all checks is acknowledged `verified`; authentic
 envelopes that fail semantics (expired, unsupported operation, clock skew) are
 acknowledged `rejected` with a reason code. Anything whose signature cannot be
-trusted is dropped silently. `remote_unlock` mints a short-lived single-use
-ticket for the Credential Provider; `remote_lock` locks the workstation (a
-no-op reported as `already_locked` when it is already locked). The agent never
-executes anything from an envelope.
+trusted is dropped silently. The agent never executes anything from an envelope.
+`account_id` is a fixed placeholder (`biounlock`) — BioUnlock has no accounts.
 
 ## Files and protection
 
@@ -86,11 +141,13 @@ executes anything from an envelope.
 | --- | --- | --- |
 | Device private key | `%LOCALAPPDATA%\BioUnlock\device_key.bin` | Windows DPAPI (current user) |
 | Config (server URL, IDs, pinned key) | `%LOCALAPPDATA%\BioUnlock\config.json` | Non-secret |
+| Windows credential (for unlock) | `%LOCALAPPDATA%\BioUnlock\windows_credential.bin` | Windows DPAPI (current user) |
 | Replay database | `%LOCALAPPDATA%\BioUnlock\replay.sqlite3` | Non-secret |
-| Service log | `%LOCALAPPDATA%\BioUnlock\agent.log` | Non-secret |
+| Agent log | `%LOCALAPPDATA%\BioUnlock\agent.log` | Non-secret |
+| Pending unlock ticket | `%ProgramData%\BioUnlock\unlock_ticket.bin` | Windows DPAPI (machine) |
 
-Set `BIOUNLOCK_AGENT_HOME` to override the directory. On non-Windows platforms a
-plaintext file store is used as a development fallback.
+Set `BIOUNLOCK_AGENT_HOME` to override the per-user directory. On non-Windows
+platforms a plaintext file store is used as a development fallback.
 
 ## Tests
 
@@ -98,7 +155,7 @@ plaintext file store is used as a development fallback.
 cd pc-agent
 pip install -r requirements-dev.txt
 pytest
-ruff check biounlock_agent tests
+ruff check .
 ```
 
 The tests cover the crypto formats, envelope verification (including tampering,

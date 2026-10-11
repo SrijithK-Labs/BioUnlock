@@ -1,8 +1,8 @@
 # BioUnlock
 
-> **Status: experimental.** BioUnlock is under active development. Remote
-> authentication across networks works; actual Windows login-screen unlocking
-> is NOT implemented yet and is a separate future milestone.
+> **Status: experimental.** BioUnlock works end to end: your phone authorizes a
+> signed request over the Internet and the paired Windows PC verifies it and
+> unlocks or locks itself via a native Credential Provider.
 
 BioUnlock lets you unlock a paired Windows PC using your Android phone's
 biometric authentication — even when the phone and the PC are on completely
@@ -11,38 +11,35 @@ different networks. The phone and PC communicate through a backend you host.
 The PC never has to expose an inbound port, and Bluetooth/`same-Wi-Fi` is
 never required.
 
-## What works today (initial MVP)
+## What works today
 
-- FastAPI backend with accounts, WebAuthn passkeys, sessions, and a signed
-  authentication-request protocol.
-- Flutter Android app with configurable backend URL, passkey enrollment,
-  PC pairing, and truthful request status.
-- Windows **Python agent** (runs as a Windows Service or console app) that
-  registers the PC, connects outbound, independently verifies signed requests,
-  and reports status back.
-- PySide6 setup GUI for the Windows software.
+- FastAPI backend with WebAuthn passkeys, device pairing, and a signed
+  authentication-request protocol. It is **single-owner**: there are no accounts
+  or sessions by design.
+- Flutter Android app with a configurable backend URL, passkey approval, PC
+  pairing, and truthful request status.
+- Windows **tray app** (PyInstaller `.exe` + installer) that links the PC, runs
+  in the background, starts at login, connects outbound, independently verifies
+  signed requests, and reports status back.
+- Native Windows **Credential Provider** that signs you in at the logon screen
+  from an approved request.
 - MitM-friendly TLS posture, secure storage for device identity, revocation,
   security event history, and rate limiting.
-
-### What is NOT included yet
-
-- **Unlocking the actual Windows logon screen.** The MVP delivers a truthful
-  "request verified" result. The supported native Windows Credential Provider
-  integration is a separate, explicitly out-of-scope milestone documented in
-  `docs/windows-authentication.md`.
 
 ## Repository layout
 
 ```
 mobile/biounlock_mobile/   Flutter app (Android)
 server/                    FastAPI backend + Alembic migrations + tests
-pc-agent/                  Windows PC agent, background service, PySide6 GUI
-pc-agent/installer/        PyInstaller + Inno Setup packaging
-windows-auth/              Native Windows logon integration (future milestone)
-installer/                 Combined installer notes
+pc-agent/                  Windows tray app + agent + credentials provider
 docs/                      Architecture, protocol, threat model, security
 .github/workflows/         CI
 ```
+
+BioUnlock is meant to be **self-hosted per user**. Deploy `server/` somewhere
+that runs Python (for example Vercel) and point both the phone app and the
+Windows app at that URL. Because there are no accounts, treat the URL as a
+secret — anyone who knows it can try to register a passkey or link a PC.
 
 ## Quick start (development)
 
@@ -88,9 +85,9 @@ cd pc-agent
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-python -m biounlock_agent.gui       # setup GUI
+python -m biounlock_agent tray      # system tray app
 # or run the background agent in the foreground:
-python -m biounlock_agent
+python -m biounlock_agent run
 ```
 
 ## Environment / configuration

@@ -4,7 +4,7 @@ import '../models/device.dart';
 import '../services/api_client.dart';
 import '../services/api_exception.dart';
 
-/// Loads, pairs, and revokes the account's PCs.
+/// Loads, pairs, and revokes the user's PCs.
 class DevicesController extends ChangeNotifier {
   DevicesController({required ApiClient api, ApiClient Function()? apiProvider})
     : _api = api,

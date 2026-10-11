@@ -85,17 +85,16 @@ http.Response errorResponse(Object body, int status) => http.Response(
   headers: {'content-type': 'application/json'},
 );
 
-Map<String, dynamic> accountJson({String email = 'user@example.com'}) => {
-  'id': 'acc-1',
-  'email': email,
-  'created_at': '2026-01-01T00:00:00Z',
-};
-
-Map<String, dynamic> sessionJson({String email = 'user@example.com'}) => {
-  'token': 'session-token',
-  'token_type': 'bearer',
-  'expires_at': '2999-01-01T00:00:00Z',
-  'account': accountJson(email: email),
+Map<String, dynamic> serverInfoJson({
+  String name = 'BioUnlock',
+  String version = '0.1.0',
+  String rpId = 'example.com',
+}) => {
+  'name': name,
+  'version': version,
+  'rp_id': rpId,
+  'server_signing_key_fingerprint': 'abc',
+  'environment': 'production',
 };
 
 Map<String, dynamic> deviceJson({
@@ -113,7 +112,6 @@ Map<String, dynamic> deviceJson({
   'last_seen_at': '2026-01-01T00:00:00Z',
   'revoked_at': null,
   'is_online': online,
-  'account_id': 'acc-1',
 };
 
 Map<String, dynamic> requestJson({

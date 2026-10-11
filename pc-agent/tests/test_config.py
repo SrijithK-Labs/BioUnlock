@@ -16,7 +16,6 @@ def test_config_roundtrip(home):
         server_signing_public_key="-----BEGIN PUBLIC KEY-----",
         server_signing_key_fingerprint="abc123",
         paired=True,
-        account_email="user@example.com",
     )
     store.save(config)
 
@@ -24,7 +23,6 @@ def test_config_roundtrip(home):
     assert loaded.is_enrolled is True
     assert loaded.is_paired is True
     assert loaded.server_url == "https://unlock.example.com"
-    assert loaded.account_email == "user@example.com"
 
 
 def test_reset_removes_config(home):
@@ -36,8 +34,45 @@ def test_reset_removes_config(home):
     assert store.load().server_url is None
 
 
+def _linked(url: str) -> AgentConfig:
+    return AgentConfig(
+        server_url=url,
+        device_id="device-1",
+        server_signing_public_key="-----BEGIN PUBLIC KEY-----",
+    )
+
+
+def test_save_keeps_previous_config_as_backup(home):
+    store = ConfigStore(home)
+    store.save(_linked("https://first"))
+    store.save(_linked("https://second"))
+    assert store.backup_path.exists()
+    assert store.load().server_url == "https://second"
+
+
+def test_load_recovers_from_backup_when_primary_is_corrupt(home):
+    store = ConfigStore(home)
+    store.save(_linked("https://first"))
+    store.save(_linked("https://second"))
+    store.path.write_text("{ this is not valid json", encoding="utf-8")
+
+    recovered = store.load()
+    assert recovered.server_url == "https://first"
+    assert recovered.is_enrolled is True
+
+
+def test_reset_removes_backup_too(home):
+    store = ConfigStore(home)
+    store.save(_linked("https://first"))
+    store.save(_linked("https://second"))
+    assert store.backup_path.exists()
+    store.reset()
+    assert store.exists() is False
+    assert store.backup_path.exists() is False
+
+
 def test_is_paired_requires_enrollment(home):
-    config = AgentConfig(paired=True, account_email="a@b")
+    config = AgentConfig(paired=True)
     assert config.is_paired is False
 
 

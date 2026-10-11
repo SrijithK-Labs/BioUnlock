@@ -11,7 +11,6 @@ class Device {
     this.lastSeenAt,
     this.revokedAt,
     this.isOnline = false,
-    this.accountId,
   });
 
   final String id;
@@ -23,7 +22,6 @@ class Device {
   final DateTime? lastSeenAt;
   final DateTime? revokedAt;
   final bool isOnline;
-  final String? accountId;
 
   bool get isActive => status == 'active';
   bool get isRevoked => status == 'revoked';
@@ -42,7 +40,6 @@ class Device {
     lastSeenAt: _parse(json['last_seen_at']),
     revokedAt: _parse(json['revoked_at']),
     isOnline: json['is_online'] as bool? ?? false,
-    accountId: json['account_id'] as String?,
   );
 }
 
