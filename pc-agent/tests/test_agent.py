@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from support import build_envelope
 
+import biounlock_agent.agent as agent_module
 from biounlock_agent import unlock
 from biounlock_agent.agent import Agent
 from biounlock_agent.api_client import Enrollment, Heartbeat, ServerInfo
@@ -304,3 +307,48 @@ def test_unenroll_clears_local_state(home, api_factory, replay_store):
     assert agent.config.is_enrolled is False
     assert agent.secret_store.get(DEVICE_KEY_NAME) is None
     assert ConfigStore(home).exists() is False
+
+
+def _heartbeat() -> Heartbeat:
+    return Heartbeat(
+        server_time="2026-01-01T00:00:00+00:00",
+        heartbeat_interval_seconds=30,
+        paired=True,
+        pending_requests=0,
+    )
+
+
+def _run_briefly(agent: Agent) -> None:
+    async def main() -> None:
+        task = asyncio.ensure_future(agent.run())
+        await asyncio.sleep(0.05)
+        agent.request_stop()
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(main())
+
+
+def test_run_can_stop_and_start_again(
+    monkeypatch, home, fake_api, api_factory, replay_store, server_pub_pem, server_fingerprint
+):
+    """Stopping and re-running the agent must not reuse a loop-bound stop event.
+
+    ``asyncio.Event`` binds to the loop that first awaits it, so reusing one
+    across runs raised "bound to a different event loop"; ``AgentRunner``
+    swallowed that, leaving the PC showing as paired but doing nothing until a
+    restart. ``run()`` now creates a fresh event each time.
+    """
+    fake_api.heartbeat_value = _heartbeat()
+
+    class FakeDelivery:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def run(self, stop) -> None:
+            await stop.wait()
+
+    monkeypatch.setattr(agent_module, "DeliveryManager", FakeDelivery)
+
+    agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
+    _run_briefly(agent)
+    _run_briefly(agent)

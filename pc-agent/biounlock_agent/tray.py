@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -31,6 +33,9 @@ from biounlock_agent import unlock
 from biounlock_agent.agent import Agent
 from biounlock_agent.config import default_home
 from biounlock_agent.logging_setup import configure_logging
+
+logger = logging.getLogger(__name__)
+
 
 try:  # pragma: no cover - Windows-only registry integration
     import winreg
@@ -119,6 +124,34 @@ def _acquire_single_instance() -> bool:
         return False
     _instance_mutex = handle
     return True
+
+
+def _release_single_instance() -> None:
+    """Drop the single-instance lock so a freshly launched copy can take over."""
+    global _instance_mutex
+    handle = _instance_mutex
+    _instance_mutex = None
+    if handle is None or os.name != "nt":  # pragma: no cover - Windows-only
+        return
+    try:  # pragma: no cover - Windows API call
+        import ctypes
+
+        ctypes.windll.kernel32.CloseHandle(handle)
+    except Exception:  # noqa: BLE001 - best effort
+        pass
+
+
+def _relaunch_arguments() -> list[str]:
+    """Command line that launches another copy of this tray app."""
+    if getattr(sys, "frozen", False):  # pragma: no cover - packaged build
+        return [sys.executable, *sys.argv[1:]]
+    return [sys.executable, "-m", "biounlock_agent", "tray"]
+
+
+def _relaunch_working_dir() -> str:
+    if getattr(sys, "frozen", False):  # pragma: no cover - packaged build
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # --- autostart at login ---------------------------------------------------
@@ -528,12 +561,48 @@ class TrayApp:
 
     def _on_paired(self) -> None:
         if self._pairing_label is not None:
-            self._pairing_label.config(text="Paired. This PC is linked.")
-        self._set_status("Linked. The agent is starting.")
-        if not self.runner.is_running():
-            self.runner.start()
-        self.icon.update_menu()
-        self._refresh_status()
+            self._pairing_label.config(text="Paired. Restarting BioUnlock\u2026")
+        self._set_status("Linked. Restarting the app to finish\u2026")
+        self._restart_app()
+
+    def _restart_app(self) -> None:
+        """Relaunch the tray so the freshly paired state takes effect cleanly.
+
+        Users found that a manual restart was needed after linking, so we do it
+        for them: launch a replacement copy, hand over the single-instance lock,
+        and quit this one. If the relaunch fails we stay alive and just start the
+        agent instead, so the PC still works.
+        """
+        self._closing = True
+        try:
+            self.runner.stop()
+        except Exception:  # noqa: BLE001 - never block the restart
+            pass
+        _release_single_instance()
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = getattr(subprocess, "DETACHED_PROCESS", 0x00000008) | getattr(
+                subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200
+            )
+        try:
+            subprocess.Popen(  # noqa: S603 - fixed, self-authored command line
+                _relaunch_arguments(),
+                cwd=_relaunch_working_dir(),
+                creationflags=creationflags,
+                close_fds=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - fall back to running in place
+            logger.error("Could not restart BioUnlock: %s", exc)
+            _acquire_single_instance()
+            self._closing = False
+            self._set_status("Linked. The agent is starting.")
+            if not self.runner.is_running():
+                self.runner.start()
+            self.icon.update_menu()
+            self._refresh_status()
+            return
+        self.icon.stop()
+        self.post(self._shutdown_ui)
 
     def _on_link_failed(self, message: str) -> None:
         if self._link_button is not None:
