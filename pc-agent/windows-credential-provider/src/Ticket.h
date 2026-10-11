@@ -15,6 +15,9 @@ struct TicketData {
 // Full path to the unlock ticket file (%ProgramData%\BioUnlock\unlock_ticket.bin).
 std::wstring TicketFilePath();
 
+// The directory shared with the Python agent (%ProgramData%\BioUnlock).
+std::wstring SharedDir();
+
 // Reads, DPAPI-unprotects and validates the ticket. Returns std::nullopt when the
 // file is absent, unreadable, malformed, or expired. Never throws.
 std::optional<TicketData> ReadUnlockTicket();

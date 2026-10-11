@@ -97,8 +97,12 @@ std::optional<std::string> Unprotect(const std::string& blob) {
 
 }  // namespace
 
+std::wstring SharedDir() {
+    return ProgramDataDir() + L"\\BioUnlock";
+}
+
 std::wstring TicketFilePath() {
-    return ProgramDataDir() + L"\\BioUnlock\\" + BIOUNLOCK_TICKET_FILENAME;
+    return SharedDir() + L"\\" + BIOUNLOCK_TICKET_FILENAME;
 }
 
 void ClearUnlockTicket() {

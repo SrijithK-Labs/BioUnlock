@@ -2,6 +2,7 @@
 
 #include "Provider.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -34,8 +35,9 @@ HRESULT FieldDescriptorCopy(const CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR& source,
     return S_OK;
 }
 
-// Finds an authentication package that can validate an interactive password.
-// Negotiate covers domain (Kerberos/NTLM) and local (NTLM -> MSV1_0) accounts.
+// Finds the authentication package that validates a KERB_INTERACTIVE_(UNLOCK_)LOGON.
+// MSV1_0 is the canonical package for interactive/unlock; it covers local accounts
+// directly and domain accounts via passthrough. Negotiate is only a fallback.
 HRESULT RetrieveNegotiateAuthPackage(ULONG* pulAuthPackage) {
     static ULONG cached = static_cast<ULONG>(-1);
     if (cached != static_cast<ULONG>(-1)) {
@@ -48,7 +50,7 @@ HRESULT RetrieveNegotiateAuthPackage(ULONG* pulAuthPackage) {
         return E_FAIL;
     }
 
-    const char* candidates[] = {"Negotiate", "Kerberos", "MICROSOFT_AUTHENTICATION_PACKAGE_V1_0"};
+    const char* candidates[] = {"MICROSOFT_AUTHENTICATION_PACKAGE_V1_0", "Negotiate", "Kerberos"};
     ULONG found = static_cast<ULONG>(-1);
     for (const char* name : candidates) {
         LSA_STRING packageName = {};
@@ -71,8 +73,11 @@ HRESULT RetrieveNegotiateAuthPackage(ULONG* pulAuthPackage) {
     return S_OK;
 }
 
-void FillUnicodeString(UNICODE_STRING& target, BYTE* position, SIZE_T lengthBytes) {
-    target.Buffer = reinterpret_cast<PWSTR>(position);
+void FillUnicodeString(UNICODE_STRING& target, const BYTE* base, const BYTE* position,
+                       SIZE_T lengthBytes) {
+    // Winlogon/LSA consume "packed" logon structs: UNICODE_STRING.Buffer holds a byte
+    // offset from the start of the buffer, not a real pointer.
+    target.Buffer = reinterpret_cast<PWSTR>(position - base);
     target.Length = static_cast<USHORT>(lengthBytes);
     target.MaximumLength = static_cast<USHORT>(lengthBytes + sizeof(wchar_t));
 }
@@ -91,8 +96,9 @@ HRESULT CreateSerialization(const TicketData& ticket, CREDENTIAL_PROVIDER_USAGE_
     const std::wstring& password = ticket.password;
 
     const bool unlock = (cpus == CPUS_UNLOCK_WORKSTATION);
-    const SIZE_T header =
-        unlock ? sizeof(KERB_INTERACTIVE_UNLOCK_LOGON) : sizeof(KERB_INTERACTIVE_LOGON);
+    // Winlogon always expects the UNLOCK variant (a KERB_INTERACTIVE_LOGON plus a LUID);
+    // the LUID is filled in by Winlogon.
+    const SIZE_T header = sizeof(KERB_INTERACTIVE_UNLOCK_LOGON);
 
     const SIZE_T domainBytes = domain.size() * sizeof(wchar_t);
     const SIZE_T usernameBytes = username.size() * sizeof(wchar_t);
@@ -113,27 +119,57 @@ HRESULT CreateSerialization(const TicketData& ticket, CREDENTIAL_PROVIDER_USAGE_
     memcpy(usernamePos, username.c_str(), usernameBytes);
     memcpy(passwordPos, password.c_str(), passwordBytes);
 
-    if (unlock) {
-        auto* kiul = reinterpret_cast<KERB_INTERACTIVE_UNLOCK_LOGON*>(buffer);
-        kiul->Logon.MessageType = KerbWorkstationUnlockLogon;
-        FillUnicodeString(kiul->Logon.LogonDomainName, domainPos, domainBytes);
-        FillUnicodeString(kiul->Logon.UserName, usernamePos, usernameBytes);
-        FillUnicodeString(kiul->Logon.Password, passwordPos, passwordBytes);
-        kiul->LogonId.LowPart = 0;
-        kiul->LogonId.HighPart = 0;
-    } else {
-        auto* kil = reinterpret_cast<KERB_INTERACTIVE_LOGON*>(buffer);
-        kil->MessageType = KerbInteractiveLogon;
-        FillUnicodeString(kil->LogonDomainName, domainPos, domainBytes);
-        FillUnicodeString(kil->UserName, usernamePos, usernameBytes);
-        FillUnicodeString(kil->Password, passwordPos, passwordBytes);
-    }
+    auto* kiul = reinterpret_cast<KERB_INTERACTIVE_UNLOCK_LOGON*>(buffer);
+    kiul->Logon.MessageType = unlock ? KerbWorkstationUnlockLogon : KerbInteractiveLogon;
+    FillUnicodeString(kiul->Logon.LogonDomainName, buffer, domainPos, domainBytes);
+    FillUnicodeString(kiul->Logon.UserName, buffer, usernamePos, usernameBytes);
+    FillUnicodeString(kiul->Logon.Password, buffer, passwordPos, passwordBytes);
+    kiul->LogonId.LowPart = 0;
+    kiul->LogonId.HighPart = 0;
 
     pcpcs->rgbSerialization = buffer;
     pcpcs->cbSerialization = static_cast<ULONG>(total);
     pcpcs->ulAuthenticationPackage = authPackage;
     pcpcs->clsidCredentialProvider = CLSID_BioUnlockProvider;
     return S_OK;
+}
+
+// Diagnostics: when %ProgramData%\BioUnlock\cp_debug.on exists, dump the produced
+// serialization so a failed logon can be inspected without a debugger.
+void MaybeDumpDebug(const TicketData& ticket, CREDENTIAL_PROVIDER_USAGE_SCENARIO cpus,
+                    const CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION& pcpcs) {
+    const std::wstring dir = SharedDir();
+    if (GetFileAttributesW((dir + L"\\cp_debug.on").c_str()) == INVALID_FILE_ATTRIBUTES) {
+        return;
+    }
+    HANDLE file = CreateFileW((dir + L"\\cp_debug.txt").c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                              nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    char header[256];
+    int n = sprintf_s(header,
+                      "cpus=%d pkg=%lu user_len=%zu domain_len=%zu pass_len=%zu total=%lu\r\n",
+                      static_cast<int>(cpus),
+                      static_cast<unsigned long>(pcpcs.ulAuthenticationPackage),
+                      ticket.username.size(), ticket.domain.size(), ticket.password.size(),
+                      static_cast<unsigned long>(pcpcs.cbSerialization));
+    DWORD written = 0;
+    WriteFile(file, header, static_cast<DWORD>(n), &written, nullptr);
+
+    std::string hex;
+    const BYTE* bytes = pcpcs.rgbSerialization;
+    for (ULONG i = 0; i < pcpcs.cbSerialization; ++i) {
+        char b[4];
+        sprintf_s(b, "%02X ", bytes[i]);
+        hex += b;
+        if ((i + 1) % 16 == 0) {
+            hex += "\r\n";
+        }
+    }
+    hex += "\r\n";
+    WriteFile(file, hex.data(), static_cast<DWORD>(hex.size()), &written, nullptr);
+    CloseHandle(file);
 }
 
 }  // namespace
@@ -529,6 +565,8 @@ IFACEMETHODIMP CBioUnlockCredential::GetSerialization(
     }
 
     *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
+
+    MaybeDumpDebug(*ticket, _cpus, *pcpcs);
 
     // Consume the ticket: it is single-use. Drop the cached copy too so a stale
     // password does not linger in memory longer than necessary.
