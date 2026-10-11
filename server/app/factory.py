@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.router import api_router
-from app.api.routes import health
+from app.api.routes import health, well_known
 from app.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.rate_limit import RateLimiter
@@ -73,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Health is available both at the root (for infra probes) and versioned.
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api/v1")
+    app.include_router(well_known.router)
     app.include_router(api_router, prefix="/api/v1")
 
     return app

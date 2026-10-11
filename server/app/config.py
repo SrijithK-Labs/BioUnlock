@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_RP_ID = "localhost"
 
@@ -42,15 +43,20 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     signing_key_path: str | None = None
 
+    # Optional path to a Digital Asset Links file served at
+    # ``/.well-known/assetlinks.json`` so Android can associate the mobile app
+    # with this WebAuthn relying party domain.
+    asset_links_path: str | None = None
+
     # WebAuthn relying party
     rp_id: str = DEFAULT_RP_ID
     rp_name: str = "BioUnlock"
     # Comma separated list of allowed WebAuthn origins (full origins, e.g.
     # "https://app.example.com" or "android:apk-key-hash:..." for native apps).
-    allowed_origins: list[str] = [f"http://{DEFAULT_RP_ID}:8000"]
+    allowed_origins: Annotated[list[str], NoDecode] = [f"http://{DEFAULT_RP_ID}:8000"]
 
     # CORS origins for browser tooling (not required by native apps).
-    cors_origins: list[str] = [f"http://{DEFAULT_RP_ID}:8000"]
+    cors_origins: Annotated[list[str], NoDecode] = [f"http://{DEFAULT_RP_ID}:8000"]
 
     # TTLs (seconds)
     session_ttl_seconds: int = 3600
