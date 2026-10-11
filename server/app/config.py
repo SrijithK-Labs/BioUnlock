@@ -6,14 +6,39 @@ a ``server/.env`` file. No secrets are embedded in code.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_RP_ID = "localhost"
+DEFAULT_DATABASE_URL = "sqlite:///./biounlock.db"
+
+# Connection strings injected by hosted Postgres integrations (e.g. Vercel +
+# Neon). Used only when BIO_DATABASE_URL is not set. Pooled URLs come first
+# because they suit serverless better; direct URLs are the fallback.
+_DATABASE_URL_ENV_FALLBACKS = (
+    "DATABASE_URL",
+    "POSTGRES_URL",
+    "DATABASE_URL_UNPOOLED",
+    "POSTGRES_URL_NON_POOLING",
+    "POSTGRES_PRISMA_URL",
+)
+
+
+def _normalize_postgres_url(url: str) -> str:
+    """Point Postgres URLs at the psycopg (v3) driver.
+
+    Providers hand out ``postgres://`` / ``postgresql://``, but SQLAlchemy would
+    try to load psycopg2 for those; we install ``psycopg``.
+    """
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
 
 
 def _parse_list(value: object) -> list[str]:
@@ -39,7 +64,7 @@ class Settings(BaseSettings):
     # not used as a root of trust for the auth protocol (Ed25519 keys are).
     secret_key: str = "development-only-insecure-key-change-me"
 
-    database_url: str = "sqlite:///./biounlock.db"
+    database_url: str = DEFAULT_DATABASE_URL
     data_dir: str = "./data"
     signing_key_path: str | None = None
 
@@ -75,6 +100,20 @@ class Settings(BaseSettings):
     @classmethod
     def _split_lists(cls, v: object) -> object:
         return _parse_list(v)
+
+    @model_validator(mode="after")
+    def _resolve_database_url(self) -> Settings:
+        url = self.database_url
+        # Nothing explicit was configured: adopt a hosted Postgres URL if one of
+        # the standard integration env vars is present.
+        if url == DEFAULT_DATABASE_URL:
+            for name in _DATABASE_URL_ENV_FALLBACKS:
+                value = os.environ.get(name)
+                if value:
+                    url = value
+                    break
+        self.database_url = _normalize_postgres_url(url)
+        return self
 
     @property
     def is_development(self) -> bool:

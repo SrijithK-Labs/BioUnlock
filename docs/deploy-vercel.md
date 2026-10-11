@@ -43,7 +43,7 @@ git ls-files | Select-String -Pattern '\.env$|\.pem$|\.key$|signing'
 | --- | --- | --- |
 | `BIO_ENVIRONMENT` | `production` | |
 | `BIO_SECRET_KEY` | *(long random string)* | not a root of trust, but must not be the default |
-| `BIO_DATABASE_URL` | `postgresql+psycopg://user:pw@host/db` | **required** — see caveat 1 |
+| `BIO_DATABASE_URL` | `postgresql+psycopg://user:pw@host/db` | optional — auto-detected from the Postgres integration (see caveat 1) |
 | `BIO_RP_ID` | `your-app.vercel.app` | effective domain, no scheme/port |
 | `BIO_ALLOWED_ORIGINS` | `https://your-app.vercel.app,android:apk-key-hash:5DVyir7YN4Fg8vd14Av1I_5Ao1FkP4pMZXdn0638qAI` | WebAuthn origins |
 | `BIO_CORS_ORIGINS` | `https://your-app.vercel.app` | |
@@ -55,9 +55,11 @@ git ls-files | Select-String -Pattern '\.env$|\.pem$|\.key$|signing'
 
 1. **SQLite does not persist on Vercel.** The filesystem is ephemeral, so the
    default `sqlite:///./biounlock.db` loses every device and pairing on each
-   deploy. Use a hosted Postgres (Neon, Supabase, Vercel Postgres) and set
-   `BIO_DATABASE_URL`. Then run migrations once against that database from your
-   machine:
+   deploy. In the project's **Storage** tab create a **Postgres** database
+   (Marketplace → Neon) and connect it; Vercel injects `DATABASE_URL` /
+   `POSTGRES_URL`, which the app now adopts automatically (and rewrites to the
+   `psycopg` driver). If you prefer, set `BIO_DATABASE_URL` yourself instead.
+   Then run migrations once against that database from your machine:
 
    ```powershell
    cd server
