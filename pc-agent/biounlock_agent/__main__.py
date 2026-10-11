@@ -3,6 +3,7 @@
 Usage::
 
     python -m biounlock_agent enroll --server-url https://unlock.example.com
+    python -m biounlock_agent set-credential
     python -m biounlock_agent run
     python -m biounlock_agent status
     python -m biounlock_agent unenroll
@@ -13,11 +14,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import json
+import os
 import sys
 
-from biounlock_agent import __version__
+from biounlock_agent import __version__, unlock
 from biounlock_agent.agent import Agent
+from biounlock_agent.config import default_home
 from biounlock_agent.errors import AgentError
 from biounlock_agent.logging_setup import configure_logging
 
@@ -97,6 +101,40 @@ def _cmd_unenroll(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_set_credential(args: argparse.Namespace) -> int:
+    home = default_home()
+    username = args.username or os.environ.get("USERNAME") or getpass.getuser()
+    domain = args.domain
+    if domain is None:
+        domain = os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or ""
+    if args.password is not None:
+        password = args.password
+        print(
+            "Warning: --password may be recorded in your shell history; prefer the prompt.",
+            file=sys.stderr,
+        )
+    else:
+        password = getpass.getpass(f"Windows password for {username}: ")
+    if not password:
+        print("Refusing to store an empty password.", file=sys.stderr)
+        return 1
+    credential = unlock.WindowsCredential(username=username, password=password, domain=domain)
+    try:
+        path = unlock.save_windows_credential(home, credential)
+    except unlock.UnlockError as exc:
+        print(f"Could not store the credential: {exc}", file=sys.stderr)
+        return 1
+    print(f"Stored a DPAPI-protected Windows credential for '{username}' at {path}.")
+    print("This PC can now be unlocked from your phone (Credential Provider must be installed).")
+    return 0
+
+
+def _cmd_clear_credential(args: argparse.Namespace) -> int:
+    unlock.reset_windows_credential(default_home())
+    print("Removed the stored Windows credential and any pending unlock ticket.")
+    return 0
+
+
 def _cmd_gui(args: argparse.Namespace) -> int:
     from biounlock_agent.gui import main as gui_main
 
@@ -123,6 +161,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     unenroll = sub.add_parser("unenroll", help="Remove the local enrollment")
     unenroll.set_defaults(func=_cmd_unenroll)
+
+    setcred = sub.add_parser(
+        "set-credential",
+        help="Store the Windows credential used for unlocking (DPAPI-protected)",
+    )
+    setcred.add_argument("--username", default=None, help="Windows username (default: current user)")
+    setcred.add_argument("--domain", default=None, help="Domain or computer name (default: detected)")
+    setcred.add_argument(
+        "--password",
+        default=None,
+        help="Windows password (omit to be prompted securely; passing it is insecure)",
+    )
+    setcred.set_defaults(func=_cmd_set_credential)
+
+    clearcred = sub.add_parser(
+        "clear-credential", help="Remove the stored Windows credential and pending ticket"
+    )
+    clearcred.set_defaults(func=_cmd_clear_credential)
 
     gui = sub.add_parser("gui", help="Launch the setup GUI")
     gui.set_defaults(func=_cmd_gui)

@@ -1,63 +1,73 @@
-# Windows Logon Integration (future milestone)
+# Windows Logon Integration
 
-**Status: NOT IMPLEMENTED.** BioUnlock's initial MVP does not unlock the
-Windows login screen. This document describes the plan and the constraints.
+**Status: IMPLEMENTED (Option A — DPAPI-protected credential).** BioUnlock can
+unlock the Windows lock screen when the paired phone approves a request. Two
+pieces implement this:
 
-## What the MVP does
+- the Python agent (`biounlock_agent/unlock.py`, `set-credential` command), and
+- a native **Credential Provider** (`pc-agent/windows-credential-provider/`).
 
-The PC agent verifies a signed authorization envelope and reports the result
-truthfully (`verified` / `rejected`). Nothing is executed on the secure
-desktop, nothing is typed into the logon UI, and no Windows credential is
-stored or transmitted.
+> **Policy note.** A real unlock of a password-protected account requires the
+> provider to supply a credential Windows accepts. This milestone therefore
+> stores the user's Windows credential **locally** with DPAPI, which consciously
+> departs from the earlier MVP rule "no Windows password is ever stored". The
+> credential never leaves the machine and is never transmitted to the server or
+> the phone. See "Security invariants" below.
 
-## What a future milestone would require
+## Flow
 
-The supported mechanism to add an alternate way to sign in on Windows is a
-**Credential Provider** — a COM in-process server written in native
-C++ (V2 API) or C#/.NET that plugs into the LogonUI/secure desktop flow.
+1. **Enrollment (once, user session).** `python -m biounlock_agent set-credential`
+   prompts for the Windows password and stores it DPAPI-protected in
+   *current-user* scope at `%LOCALAPPDATA%\BioUnlock\windows_credential.bin`.
+2. **Approval.** The phone approves a `remote_unlock`. The agent verifies the
+   server-signed envelope exactly as before (signature, PC binding, freshness,
+   replay) and acknowledges it `verified`.
+3. **Ticket.** On a *verified* `remote_unlock` the agent writes a short-lived
+   (default 60 s, capped 300 s), single-use ticket to
+   `%ProgramData%\BioUnlock\unlock_ticket.bin`, protected with DPAPI *machine*
+   scope. The ticket is a fixed little-endian record (never JSON, never the raw
+   envelope): `request_id`, account, timestamps, and the credential.
+4. **Unlock.** The Credential Provider (running as SYSTEM in LogonUI on the
+   secure desktop) watches that file. On a valid ticket it asks LogonUI to
+   re-enumerate; the BioUnlock tile becomes the default and auto-submits via
+   `KERB_INTERACTIVE_UNLOCK_LOGON`, and **Windows performs its normal
+   authentication** through the Negotiate/MSV1_0 package.
 
-Constraints that the design must respect:
+## Trust and failure rules
 
-- A Credential Provider runs in the **secure desktop** on the logon UI at the
-  moment the workstation is locked. It cannot depend on the user session's
-  agent process being logged in interactively.
-- BioUnlock should only *drive the credential provider to tell the user that a
-  remote authorization succeeded*; it must not bypass Windows authentication.
-  On supported systems the provider can invoke Winlogon's
-  `WLLogonNotify` / `SidToLogonSession` APIs only through the documented
-  provider interfaces. Any stored credential used must be protected with
-  DPAPI and configurable account policy.
-- The provider must not: inject passwords into the logon screen, simulate
-  keyboard input, modify LSASS memory, or use undocumented APIs.
-- The user must keep the normal Windows sign-in method available at all times
-  (the provider is added, not replacing).
+- The provider is **added, not replacing**: the built-in password tile is always
+  present, so a user can always sign in normally.
+- Tickets are bound to a request id, carry their own expiry, and are single-use.
+- A stale, truncated, wrong-scope, or forged ticket is discarded
+  (`ReadUnlockTicket` returns nothing); the agent fails closed on any envelope
+  that is not fully verified.
+- No input injection, no LSASS tampering, no undocumented APIs.
 
-### Interface between the native provider and the Python agent
+## Interface between the native provider and the Python agent
 
-The Python agent runs in the user session and cannot control the secure
-desktop directly. A realistic design:
+```
+agent (user session)                         provider (SYSTEM, secure desktop)
+  verify envelope                              watch %ProgramData%\BioUnlock\
+  -> write unlock_ticket.bin  ------------->     unlock_ticket.bin (machine DPAPI)
+     (machine DPAPI, TTL)                        parse + validate TTL
+                                                 CredentialsChanged -> auto-submit
+```
 
-1. The **agent** keeps watching verified envelopes (as it already does).
-   On a *verified remote_unlock* it writes a **ticket** into a location both
-   processes share with appropriate ACLs (e.g. `%ProgramData%\BioUnlock\`),
-   containing a short-lived, high-entropy ticket ID (never the raw envelope).
-2. The **credential provider** (running during the logon prompt) detects the
-   new ticket, shows "Unlock approved on your phone — press Sign in", and on
-   confirmation calls `WLLogonNotify(...)` via the documented provider
-   credential interfaces with the account the ticket is bound to.
-3. Windows performs its real authentication; BioUnlock provides only the
-   "the user verified on their phone" signal, scoped to the ticket's account,
-   TTL, and revocation status.
-
-This is exactly the design space that must be implemented in a later
-milestone, in a disposable Windows VM, and verified for real. Nothing about it
-is implemented or claimed today.
-
-## Safety invariants (unchanged across the whole project)
+## Security invariants
 
 - Normal Windows sign-in always remains available.
-- No Windows password is ever stored or transmitted.
+- The Windows credential is stored **only** locally, DPAPI-protected, and is
+  never transmitted; the server and phone never see it.
+- Tickets are short-lived and machine-scope DPAPI; the machine-wide ticket
+  directory holds no long-term secret.
 - No keyboard/mouse injection into the logon UI.
 - No LSASS tampering; no undocumented APIs.
 - The agent fails closed when signature, freshness, or binding cannot be
   verified.
+
+## Recovery
+
+If the provider ever misbehaves, sign in with your password (always available),
+or boot to Safe Mode and run
+`pc-agent/windows-credential-provider/uninstall.ps1`. Remove the stored
+credential with `python -m biounlock_agent clear-credential`.

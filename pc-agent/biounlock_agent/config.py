@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 APP_DIR_NAME = "BioUnlock"
 ENV_HOME = "BIOUNLOCK_AGENT_HOME"
+ENV_SHARED_HOME = "BIOUNLOCK_AGENT_SHARED_HOME"
 CONFIG_FILENAME = "config.json"
 REPLAY_FILENAME = "replay.sqlite3"
 DEVICE_KEY_NAME = "device_key"
@@ -30,6 +31,22 @@ def default_home() -> Path:
         base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
         if base:
             return Path(base) / APP_DIR_NAME
+    return Path.home() / ".biounlock"
+
+
+def default_shared_home() -> Path:
+    """Directory shared with the SYSTEM-run Credential Provider.
+
+    Unlock tickets are written here (``%ProgramData%\\BioUnlock``) so the native
+    provider, running on the secure desktop as SYSTEM, can read them. Override
+    with ``BIOUNLOCK_AGENT_SHARED_HOME``.
+    """
+    override = os.environ.get(ENV_SHARED_HOME)
+    if override:
+        return Path(override)
+    if os.name == "nt":
+        base = os.environ.get("ProgramData") or r"C:\ProgramData"
+        return Path(base) / APP_DIR_NAME
     return Path.home() / ".biounlock"
 
 

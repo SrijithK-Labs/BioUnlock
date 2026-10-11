@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from biounlock_agent import unlock
 from biounlock_agent.api_client import ApiClient, Enrollment, Heartbeat
 from biounlock_agent.config import (
     DEVICE_KEY_NAME,
@@ -23,6 +24,7 @@ from biounlock_agent.config import (
     AgentConfig,
     ConfigStore,
     default_device_name,
+    default_shared_home,
 )
 from biounlock_agent.crypto import (
     Ed25519PrivateKey,
@@ -34,7 +36,7 @@ from biounlock_agent.delivery import DeliveryManager
 from biounlock_agent.errors import AgentError, ApiError, EnvelopeVerificationError, NotEnrolledError
 from biounlock_agent.replay import ReplayStore
 from biounlock_agent.storage import SecretStore, default_secret_store
-from biounlock_agent.verifier import verify_envelope
+from biounlock_agent.verifier import VerifiedEnvelope, verify_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,7 @@ class AgentStatus:
     account_email: str | None
     connected: bool
     processed_count: int
+    credential_enrolled: bool
     last_error: str | None
 
 
@@ -75,6 +78,7 @@ class Agent:
         replay_store: ReplayStore | None = None,
         api_factory: Callable[..., ApiClient] | None = None,
         clock: Callable[[], float] = time.time,
+        unlock_dir: Path | None = None,
     ) -> None:
         self.config_store = config_store or ConfigStore(home)
         ensure_home = getattr(self.config_store, "ensure_home", None)
@@ -83,6 +87,7 @@ class Agent:
         self.secret_store = secret_store or default_secret_store(self.config_store.home)
         self.replay_store = replay_store or ReplayStore(self.config_store.home / REPLAY_FILENAME)
         self.config = self.config_store.load()
+        self.unlock_dir = Path(unlock_dir) if unlock_dir is not None else default_shared_home()
         self._clock = clock
         self._api_factory = api_factory or (lambda **kwargs: ApiClient(**kwargs))
         self._api: ApiClient | None = None
@@ -224,12 +229,40 @@ class Agent:
 
         self._ack(verified.request_id, status="verified")
         self.processed_count += 1
+        self._issue_unlock_ticket(verified)
         logger.info(
             "Verified authorization request %s for account %s",
             verified.request_id,
             verified.account_id,
         )
         return ProcessedEnvelope(verified.request_id, "verified")
+
+    def _issue_unlock_ticket(self, verified: VerifiedEnvelope) -> None:
+        """Turn a verified remote-unlock into a short-lived ticket for the CP.
+
+        This is best-effort: a missing credential only means the Credential
+        Provider has nothing to submit, and is logged rather than raised so the
+        request is still acknowledged as ``verified``.
+        """
+        if verified.operation != "remote_unlock":
+            return
+        home = self.config_store.home
+        try:
+            if not unlock.has_windows_credential(home):
+                logger.warning(
+                    "Verified unlock %s but no Windows credential is enrolled; "
+                    "run 'biounlock_agent set-credential' to enable real unlocking.",
+                    verified.request_id,
+                )
+                return
+            credential = unlock.load_windows_credential(home)
+            unlock.issue_unlock_ticket(
+                self.unlock_dir, request_id=verified.request_id, credential=credential
+            )
+            logger.info("Issued Windows unlock ticket for request %s", verified.request_id)
+        except unlock.UnlockError as exc:
+            logger.warning("Could not issue unlock ticket for %s: %s", verified.request_id, exc)
+
 
     def _ack(self, request_id: str, *, status: str, reason_code: str | None = None) -> None:
         try:
@@ -307,6 +340,7 @@ class Agent:
             account_email=self.config.account_email,
             connected=self._connected,
             processed_count=self.processed_count,
+            credential_enrolled=unlock.has_windows_credential(self.config_store.home),
             last_error=self.last_error,
         )
 

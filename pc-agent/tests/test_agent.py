@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from support import build_envelope
 
+from biounlock_agent import unlock
 from biounlock_agent.agent import Agent
 from biounlock_agent.api_client import Enrollment, Heartbeat, ServerInfo
 from biounlock_agent.config import DEVICE_KEY_NAME, AgentConfig, ConfigStore
@@ -26,7 +27,9 @@ def _enrollment(fingerprint: str) -> Enrollment:
 
 
 def _make_agent(home, api_factory, replay_store, **kwargs) -> Agent:
-    return Agent(home=home, api_factory=api_factory, replay_store=replay_store, **kwargs)
+    return Agent(
+        home=home, api_factory=api_factory, replay_store=replay_store, unlock_dir=home, **kwargs
+    )
 
 
 def _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint) -> Agent:
@@ -153,6 +156,35 @@ def test_status_reports_unenrolled(home, api_factory, replay_store):
     assert status.enrolled is False
     assert status.paired is False
     assert status.processed_count == 0
+    assert status.credential_enrolled is False
+
+
+@pytest.mark.skipif(not unlock.dpapi_available(), reason="Windows DPAPI is not available")
+def test_verified_unlock_issues_ticket(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint):
+    agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
+    unlock.save_windows_credential(
+        home, unlock.WindowsCredential(username="user", password="secret", domain="PC")
+    )
+    envelope = build_envelope(server_key, pc_id="pc-1")
+
+    outcome = agent.handle_envelope(envelope)
+
+    assert outcome.outcome == "verified"
+    ticket = unlock.read_unlock_ticket(home)
+    assert ticket is not None
+    assert ticket["request_id"] == "req-1"
+    assert ticket["username"] == "user"
+    assert ticket["password"] == "secret"
+
+
+@pytest.mark.skipif(not unlock.dpapi_available(), reason="Windows DPAPI is not available")
+def test_verified_unlock_without_credential_still_succeeds(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint):
+    agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
+
+    outcome = agent.handle_envelope(build_envelope(server_key, pc_id="pc-1"))
+
+    assert outcome.outcome == "verified"
+    assert unlock.read_unlock_ticket(home) is None
 
 
 def test_unenroll_clears_local_state(home, api_factory, replay_store):
