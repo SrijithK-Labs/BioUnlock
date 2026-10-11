@@ -1,51 +1,19 @@
-"""FastAPI dependencies: database session, current account, current device."""
+"""FastAPI dependencies: database session and current device."""
 
 from __future__ import annotations
 
 import time
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import device_auth_message, hash_token, verify_message_signature
-from app.core.time import as_utc
+from app.core.security import device_auth_message, verify_message_signature
 from app.database import get_db
-from app.models import Account, Device, DeviceStatus, SessionToken, utcnow
+from app.models import Device, DeviceStatus
 
 
 def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
-
-
-def _bearer_token(request: Request) -> str | None:
-    header = request.headers.get("authorization", "")
-    if header.lower().startswith("bearer "):
-        return header[7:].strip()
-    return None
-
-
-def get_current_account(
-    request: Request, db: Session = Depends(get_db)
-) -> Account:
-    token = _bearer_token(request)
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    record = db.execute(
-        select(SessionToken).where(SessionToken.token_hash == hash_token(token))
-    ).scalar_one_or_none()
-    if record is None or record.revoked_at is not None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session.")
-    if as_utc(record.expires_at) <= utcnow():
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired.")
-    account = db.get(Account, record.account_id)
-    if account is None or not account.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account unavailable.")
-    return account
 
 
 def _parse_device_auth(header: str) -> tuple[str, int, str] | None:

@@ -2,51 +2,17 @@ from fastapi.testclient import TestClient
 
 from app.core.security import envelope_message, verify_message_signature
 from tests.conftest import (
-    auth_header,
     create_auth_request,
     enroll_and_pair,
-    register_account,
     register_passkey,
 )
 from tests.support.helpers import device_auth_header
 
 
-def test_challenge_cross_user_device_rejected(client: TestClient) -> None:
-    token_a = register_account(client, email="a@example.com")
-    register_passkey(client, token_a)
-    token_b = register_account(client, email="b@example.com")
-    register_passkey(client, token_b)
-    device_id_a, _key, _fp = enroll_and_pair(client, token_a)
-    # B tries to create a challenge for A's device.
-    response = client.post("/api/v1/auth/challenges", json={"pc_id": device_id_a}, headers=auth_header(token_b))
-    assert response.status_code == 404
-
-
-def test_authorization_request_cannot_target_foreign_device(client: TestClient) -> None:
-    token_a = register_account(client, email="a@example.com")
-    authenticator_a = register_passkey(client, token_a)
-    token_b = register_account(client, email="b@example.com")
-    register_passkey(client, token_b)
-    device_id_a, _key, _fp = enroll_and_pair(client, token_a)
-
-    begin = client.post("/api/v1/auth/challenges", json={"pc_id": device_id_a}, headers=auth_header(token_a)).json()
-    from tests.support.helpers import b64url_decode
-
-    assertion = authenticator_a.get_assertion(b64url_decode(begin["options"]["challenge"]))
-    # B tries to complete A's challenge.
-    response = client.post(
-        "/api/v1/auth/requests",
-        json={"challenge_id": begin["challenge_id"], "pc_id": device_id_a, "assertion": assertion},
-        headers=auth_header(token_b),
-    )
-    assert response.status_code == 400
-
-
 def test_envelope_signature_is_verifiable(client: TestClient, app) -> None:
-    token = register_account(client)
-    authenticator = register_passkey(client, token)
-    device_id, _key, fp = enroll_and_pair(client, token)
-    request_id = create_auth_request(client, token, device_id, authenticator).json()["id"]
+    authenticator = register_passkey(client)
+    device_id, _key, fp = enroll_and_pair(client)
+    request_id = create_auth_request(client, device_id, authenticator).json()["id"]
 
     server_key = app.state.server_signing_key
     session = app.state.session_factory()
@@ -86,10 +52,9 @@ def test_envelope_signature_is_verifiable(client: TestClient, app) -> None:
 
 
 def test_inbox_delivers_envelope(client: TestClient) -> None:
-    token = register_account(client)
-    authenticator = register_passkey(client, token)
-    device_id, key, fp = enroll_and_pair(client, token)
-    request_id = create_auth_request(client, token, device_id, authenticator).json()["id"]
+    authenticator = register_passkey(client)
+    device_id, key, fp = enroll_and_pair(client)
+    request_id = create_auth_request(client, device_id, authenticator).json()["id"]
 
     inbox = client.get("/api/v1/devices/me/inbox", headers=device_auth_header(key, fp, device_id))
     assert inbox.status_code == 200

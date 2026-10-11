@@ -54,16 +54,6 @@ def server_fingerprint(app) -> str:
     return app.state.server_signing_key.fingerprint()
 
 
-def register_account(client: TestClient, email: str = "user@example.com", password: str = "password123") -> str:
-    response = client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    assert response.status_code == 201, response.text
-    return response.json()["token"]
-
-
-def auth_header(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
-
-
 def enroll_device(client: TestClient, *, name: str = "Test PC") -> dict:
     _private_key, public_pem = new_device_keypair()
     response = client.post(
@@ -74,16 +64,7 @@ def enroll_device(client: TestClient, *, name: str = "Test PC") -> dict:
     return response.json()
 
 
-def pair_device(client: TestClient, token: str, enrollment: dict) -> None:
-    response = client.post(
-        "/api/v1/pairing/confirm",
-        json={"pairing_code": enrollment["pairing_code"]},
-        headers=auth_header(token),
-    )
-    assert response.status_code == 200, response.text
-
-
-def enroll_and_pair(client: TestClient, token: str, *, name: str = "Test PC"):
+def enroll_and_pair(client: TestClient, *, name: str = "Test PC"):
     """Returns (device_id, private_key, fingerprint)."""
     private_key, public_pem = new_device_keypair()
     enroll = client.post(
@@ -95,15 +76,14 @@ def enroll_and_pair(client: TestClient, token: str, *, name: str = "Test PC"):
     confirm = client.post(
         "/api/v1/pairing/confirm",
         json={"pairing_code": data["pairing_code"]},
-        headers=auth_header(token),
     )
     assert confirm.status_code == 200, confirm.text
     return data["device_id"], private_key, data["server_signing_key_fingerprint"]
 
 
-def register_passkey(client: TestClient, token: str, authenticator: SoftAuthenticator | None = None):
+def register_passkey(client: TestClient, authenticator: SoftAuthenticator | None = None):
     authenticator = authenticator or SoftAuthenticator(rp_id="localhost", origin=TEST_ORIGIN)
-    begin = client.post("/api/v1/webauthn/register/begin", headers=auth_header(token))
+    begin = client.post("/api/v1/webauthn/register/begin")
     assert begin.status_code == 200, begin.text
     options = begin.json()
     challenge = _decode(options["options"]["challenge"])
@@ -111,7 +91,6 @@ def register_passkey(client: TestClient, token: str, authenticator: SoftAuthenti
     complete = client.post(
         "/api/v1/webauthn/register/complete",
         json={"challenge_id": options["challenge_id"], "credential": credential, "name": "Test passkey"},
-        headers=auth_header(token),
     )
     assert complete.status_code == 200, complete.text
     return authenticator
@@ -119,7 +98,6 @@ def register_passkey(client: TestClient, token: str, authenticator: SoftAuthenti
 
 def create_auth_request(
     client: TestClient,
-    token: str,
     device_id: str,
     authenticator: SoftAuthenticator,
     *,
@@ -128,7 +106,6 @@ def create_auth_request(
     begin = client.post(
         "/api/v1/auth/challenges",
         json={"pc_id": device_id},
-        headers=auth_header(token),
     )
     assert begin.status_code == 200, begin.text
     data = begin.json()
@@ -142,6 +119,5 @@ def create_auth_request(
             "operation": operation,
             "assertion": assertion,
         },
-        headers=auth_header(token),
     )
     return created

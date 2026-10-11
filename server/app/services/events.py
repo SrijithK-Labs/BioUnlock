@@ -10,14 +10,12 @@ from app.models import SecurityEvent, SecurityEventType
 def record_event(
     db: Session,
     *,
-    account_id: str,
     event_type: SecurityEventType,
     detail: str = "",
     device_id: str | None = None,
     ip: str | None = None,
 ) -> SecurityEvent:
     event = SecurityEvent(
-        account_id=account_id,
         device_id=device_id,
         event_type=event_type,
         detail=detail[:500],

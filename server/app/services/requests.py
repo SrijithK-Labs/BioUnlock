@@ -6,7 +6,11 @@ from app.core.security import ServerSigningKey, envelope_message
 from app.core.time import as_utc, to_epoch
 from app.models import AuthRequest
 
-__all__ = ["as_utc", "to_epoch", "build_envelope", "status_value"]
+__all__ = ["SINGLE_USER_ID", "as_utc", "to_epoch", "build_envelope", "status_value"]
+
+# Self-hosted single-owner deployment. The signed envelope wire format is frozen
+# and includes an ``account_id`` field, so we populate it with a constant.
+SINGLE_USER_ID = "biounlock"
 
 
 def build_envelope(server_key: ServerSigningKey, request: AuthRequest) -> dict:
@@ -19,7 +23,7 @@ def build_envelope(server_key: ServerSigningKey, request: AuthRequest) -> dict:
     expires_at = to_epoch(request.expires_at)
     message = envelope_message(
         request.id,
-        request.account_id,
+        SINGLE_USER_ID,
         request.pc_id,
         request.operation,
         issued_at,
@@ -28,7 +32,7 @@ def build_envelope(server_key: ServerSigningKey, request: AuthRequest) -> dict:
     )
     return {
         "request_id": request.id,
-        "account_id": request.account_id,
+        "account_id": SINGLE_USER_ID,
         "pc_id": request.pc_id,
         "operation": request.operation,
         "issued_at": issued_at,

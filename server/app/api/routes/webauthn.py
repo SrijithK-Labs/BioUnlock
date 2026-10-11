@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 
-from app.api.deps import client_ip, get_current_account
+from app.api.deps import client_ip
 from app.core.rate_limit import rate_limit
 from app.core.time import as_utc
 from app.core.webauthn_service import (
@@ -19,15 +19,16 @@ from app.core.webauthn_service import (
     verify_registration,
 )
 from app.database import get_db
-from app.models import Account, Challenge, ChallengePurpose, SecurityEventType, WebAuthnCredential, utcnow
+from app.models import Challenge, ChallengePurpose, SecurityEventType, WebAuthnCredential, utcnow
 from app.schemas import (
     CredentialOut,
     MessageResponse,
     RegistrationBeginResponse,
     RegistrationCompleteRequest,
 )
-from app.services.accounts import new_uuid
 from app.services.events import record_event
+from app.services.ids import new_uuid
+from app.services.requests import SINGLE_USER_ID
 
 router = APIRouter(tags=["webauthn"])
 
@@ -39,7 +40,6 @@ router = APIRouter(tags=["webauthn"])
 )
 def register_begin(
     request: Request,
-    account: Account = Depends(get_current_account),
     db: Session = Depends(get_db),
 ) -> RegistrationBeginResponse:
     settings = request.app.state.settings
@@ -47,14 +47,13 @@ def register_begin(
     options, _ = build_registration_options(
         rp_id=settings.rp_id,
         rp_name=settings.rp_name,
-        account_id=account.id,
-        account_email=account.email,
+        account_id=SINGLE_USER_ID,
+        account_email=settings.rp_name,
         challenge=challenge_bytes,
     )
     expires_at = utcnow() + timedelta(seconds=settings.challenge_ttl_seconds)
     record = Challenge(
         id=new_uuid(),
-        account_id=account.id,
         purpose=ChallengePurpose.registration,
         challenge=bytes_to_base64url(challenge_bytes),
         rp_id=settings.rp_id,
@@ -74,12 +73,11 @@ def register_begin(
 def register_complete(
     payload: RegistrationCompleteRequest,
     request: Request,
-    account: Account = Depends(get_current_account),
     db: Session = Depends(get_db),
 ) -> CredentialOut:
     settings = request.app.state.settings
     challenge = db.get(Challenge, payload.challenge_id)
-    if challenge is None or challenge.account_id != account.id or challenge.purpose != ChallengePurpose.registration:
+    if challenge is None or challenge.purpose != ChallengePurpose.registration:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown registration challenge.")
     if challenge.used_at is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Challenge already used.")
@@ -96,7 +94,6 @@ def register_complete(
     except WebAuthnError as exc:
         record_event(
             db,
-            account_id=account.id,
             event_type=SecurityEventType.CHALLENGE_FAILED,
             detail="Passkey registration verification failed.",
             ip=client_ip(request),
@@ -112,7 +109,6 @@ def register_complete(
 
     credential = WebAuthnCredential(
         id=new_uuid(),
-        account_id=account.id,
         credential_id=result.credential_id,
         public_key=result.public_key,
         sign_count=result.sign_count,
@@ -123,7 +119,6 @@ def register_complete(
     db.add(credential)
     record_event(
         db,
-        account_id=account.id,
         event_type=SecurityEventType.PASSKEY_REGISTERED,
         detail="Passkey registered.",
         ip=client_ip(request),
@@ -135,12 +130,10 @@ def register_complete(
 
 @router.get("/webauthn/credentials", response_model=list[CredentialOut])
 def list_credentials(
-    account: Account = Depends(get_current_account), db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> list[CredentialOut]:
     credentials = db.execute(
-        select(WebAuthnCredential)
-        .where(WebAuthnCredential.account_id == account.id)
-        .order_by(WebAuthnCredential.created_at.desc())
+        select(WebAuthnCredential).order_by(WebAuthnCredential.created_at.desc())
     ).scalars().all()
     return [CredentialOut.model_validate(c) for c in credentials]
 
@@ -149,16 +142,14 @@ def list_credentials(
 def delete_credential(
     credential_id: str,
     request: Request,
-    account: Account = Depends(get_current_account),
     db: Session = Depends(get_db),
 ) -> MessageResponse:
     credential = db.get(WebAuthnCredential, credential_id)
-    if credential is None or credential.account_id != account.id:
+    if credential is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Credential not found.")
     db.delete(credential)
     record_event(
         db,
-        account_id=account.id,
         event_type=SecurityEventType.PASSKEY_REMOVED,
         detail="Passkey removed.",
         ip=client_ip(request),

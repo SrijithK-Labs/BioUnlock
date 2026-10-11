@@ -9,6 +9,7 @@
 server_signing_key.json
 agent_identity.json
 secrets/
+.vercel/
 
 # --- Python ---
 __pycache__/
@@ -28,7 +29,7 @@ coverage.xml
 build/
 dist/
 *.spec
-!pc-agent/installer/biounlock_agent.spec
+!pc-agent/BioUnlock.spec
 
 # --- Databases ---
 *.db

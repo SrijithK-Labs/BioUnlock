@@ -12,8 +12,6 @@ from sqlalchemy import create_engine, inspect
 from app.config import get_settings
 
 EXPECTED_TABLES = {
-    "accounts",
-    "session_tokens",
     "webauthn_credentials",
     "challenges",
     "devices",
@@ -60,7 +58,7 @@ def test_migration_downgrade(tmp_path: Path, monkeypatch) -> None:
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     tables = set(inspect(engine).get_table_names())
     engine.dispose()
-    assert "accounts" not in tables
+    assert "devices" not in tables
 
     get_settings.cache_clear()
     os.environ.pop("BIO_DATABASE_URL", None)

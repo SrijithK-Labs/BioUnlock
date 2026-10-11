@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ErrorDetail(BaseModel):
@@ -19,34 +19,6 @@ class ErrorResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
-
-
-# --- Accounts / sessions ---
-
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=1, max_length=128)
-
-
-class AccountOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    email: str
-    created_at: datetime
-
-
-class TokenResponse(BaseModel):
-    token: str
-    token_type: str = "bearer"
-    expires_at: datetime
-    account: AccountOut
 
 
 # --- WebAuthn ---
@@ -132,7 +104,6 @@ class DeviceOut(BaseModel):
     last_seen_at: datetime | None
     revoked_at: datetime | None
     is_online: bool = False
-    account_id: str | None = None
 
 
 class PairingConfirmResponse(BaseModel):
@@ -144,7 +115,6 @@ class HeartbeatResponse(BaseModel):
     server_time: datetime
     heartbeat_interval_seconds: int
     paired: bool
-    account_email: str | None = None
     pending_requests: int = 0
 
 

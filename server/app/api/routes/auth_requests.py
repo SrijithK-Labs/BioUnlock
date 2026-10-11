@@ -12,7 +12,6 @@ from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 
 from app.api.deps import (
     client_ip,
-    get_current_account,
     require_active_device,
 )
 from app.core.rate_limit import rate_limit
@@ -23,7 +22,6 @@ from app.core.webauthn_service import (
 )
 from app.database import get_db
 from app.models import (
-    Account,
     AuthRequest,
     AuthRequestStatus,
     Challenge,
@@ -42,17 +40,16 @@ from app.schemas import (
     AuthenticationCompleteRequest,
     AuthRequestOut,
 )
-from app.services.accounts import new_uuid
 from app.services.events import record_event
+from app.services.ids import new_uuid
 from app.services.requests import as_utc, build_envelope, status_value
 
 router = APIRouter(tags=["auth-requests"])
 
 
-def _require_owned_device(db: Session, account: Account, pc_id: str) -> Device:
+def _require_active_device_for_request(db: Session, pc_id: str) -> Device:
     device = db.get(Device, pc_id)
-    if device is None or device.account_id != account.id:
-        # Do not disclose whether the device exists for another account.
+    if device is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PC not found.")
     if device.status != DeviceStatus.active:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="PC is not paired and active.")
@@ -83,15 +80,12 @@ def _request_out(db: Session, request: AuthRequest) -> AuthRequestOut:
 def create_challenge(
     payload: AuthenticationBeginRequest,
     request: Request,
-    account: Account = Depends(get_current_account),
     db: Session = Depends(get_db),
 ) -> AuthenticationBeginResponse:
     settings = request.app.state.settings
-    device = _require_owned_device(db, account, payload.pc_id)
+    device = _require_active_device_for_request(db, payload.pc_id)
 
-    credentials = db.execute(
-        select(WebAuthnCredential).where(WebAuthnCredential.account_id == account.id)
-    ).scalars().all()
+    credentials = db.execute(select(WebAuthnCredential)).scalars().all()
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -107,7 +101,6 @@ def create_challenge(
     expires_at = utcnow() + timedelta(seconds=settings.challenge_ttl_seconds)
     record = Challenge(
         id=new_uuid(),
-        account_id=account.id,
         purpose=ChallengePurpose.authentication,
         challenge=bytes_to_base64url(challenge_bytes),
         rp_id=settings.rp_id,
@@ -135,7 +128,6 @@ def create_challenge(
 async def create_auth_request(
     payload: AuthenticationCompleteRequest,
     request: Request,
-    account: Account = Depends(get_current_account),
     db: Session = Depends(get_db),
 ) -> AuthRequestOut:
     settings = request.app.state.settings
@@ -144,7 +136,6 @@ async def create_auth_request(
     challenge = db.get(Challenge, payload.challenge_id)
     if (
         challenge is None
-        or challenge.account_id != account.id
         or challenge.purpose != ChallengePurpose.authentication
         or challenge.pc_id != payload.pc_id
     ):
@@ -154,17 +145,14 @@ async def create_auth_request(
     if as_utc(challenge.expires_at) <= utcnow():
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Challenge expired.")
 
-    device = _require_owned_device(db, account, payload.pc_id)
+    device = _require_active_device_for_request(db, payload.pc_id)
 
     assertion = payload.assertion
     assertion_id = assertion.get("id")
     if not isinstance(assertion_id, str):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed assertion.")
     credential = db.execute(
-        select(WebAuthnCredential).where(
-            WebAuthnCredential.credential_id == assertion_id,
-            WebAuthnCredential.account_id == account.id,
-        )
+        select(WebAuthnCredential).where(WebAuthnCredential.credential_id == assertion_id)
     ).scalar_one_or_none()
     if credential is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown passkey.")
@@ -181,7 +169,6 @@ async def create_auth_request(
     except WebAuthnError as exc:
         record_event(
             db,
-            account_id=account.id,
             event_type=SecurityEventType.CHALLENGE_FAILED,
             detail="Authorization assertion verification failed.",
             device_id=device.id,
@@ -196,7 +183,6 @@ async def create_auth_request(
 
     auth_request = AuthRequest(
         id=new_uuid(),
-        account_id=account.id,
         pc_id=device.id,
         challenge_id=challenge.id,
         operation=payload.operation,
@@ -207,7 +193,6 @@ async def create_auth_request(
     db.add(auth_request)
     record_event(
         db,
-        account_id=account.id,
         event_type=SecurityEventType.AUTH_REQUEST_CREATED,
         detail=f"Authorization request for '{device.name}'.",
         device_id=device.id,
@@ -225,7 +210,6 @@ async def create_auth_request(
         auth_request.delivered_at = utcnow()
         record_event(
             db,
-            account_id=account.id,
             event_type=SecurityEventType.AUTH_REQUEST_DELIVERED,
             detail="Delivered to PC.",
             device_id=device.id,
@@ -238,17 +222,12 @@ async def create_auth_request(
 
 @router.get("/requests", response_model=list[AuthRequestOut])
 def list_requests(
-    request: Request,
     limit: int = 50,
-    account: Account = Depends(get_current_account),
     db: Session = Depends(get_db),
 ) -> list[AuthRequestOut]:
     limit = max(1, min(limit, 200))
     rows = db.execute(
-        select(AuthRequest)
-        .where(AuthRequest.account_id == account.id)
-        .order_by(AuthRequest.created_at.desc())
-        .limit(limit)
+        select(AuthRequest).order_by(AuthRequest.created_at.desc()).limit(limit)
     ).scalars().all()
     return [_request_out(db, r) for r in rows]
 
@@ -256,12 +235,10 @@ def list_requests(
 @router.get("/requests/{request_id}", response_model=AuthRequestOut)
 def get_request(
     request_id: str,
-    request: Request,
-    account: Account = Depends(get_current_account),
     db: Session = Depends(get_db),
 ) -> AuthRequestOut:
     auth_request = db.get(AuthRequest, request_id)
-    if auth_request is None or auth_request.account_id != account.id:
+    if auth_request is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found.")
 
     # Lazily expire a stale pending request so the client sees the truth.
@@ -272,7 +249,6 @@ def get_request(
         auth_request.status = AuthRequestStatus.expired
         record_event(
             db,
-            account_id=account.id,
             event_type=SecurityEventType.AUTH_REQUEST_EXPIRED,
             detail="Authorization request expired.",
             device_id=auth_request.pc_id,
@@ -286,7 +262,6 @@ def get_request(
 def acknowledge_request(
     request_id: str,
     payload: AckRequest,
-    request: Request,
     device: Device = Depends(require_active_device),
     db: Session = Depends(get_db),
 ) -> AckResponse:
@@ -327,7 +302,6 @@ def acknowledge_request(
     )
     record_event(
         db,
-        account_id=auth_request.account_id,
         event_type=event_type,
         detail=payload.reason_code or "",
         device_id=device.id,

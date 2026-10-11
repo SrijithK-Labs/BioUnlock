@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_secret
 from app.core.time import as_utc
-from app.models import Account, Device, DeviceStatus, PairingCode, SecurityEventType, utcnow
+from app.models import Device, DeviceStatus, PairingCode, SecurityEventType, utcnow
 from app.services.events import record_event
 
 CODE_PREFIX_LEN = 6
@@ -72,7 +72,6 @@ def create_pairing(
 def confirm_pairing(
     db: Session,
     *,
-    account: Account,
     code: str,
     ip: str | None,
     max_attempts: int,
@@ -93,7 +92,6 @@ def confirm_pairing(
     if matched is None:
         record_event(
             db,
-            account_id=account.id,
             event_type=SecurityEventType.PAIRING_ATTEMPT_FAILED,
             detail="Unknown pairing code.",
             ip=ip,
@@ -110,7 +108,6 @@ def confirm_pairing(
         matched.used_at = now
         record_event(
             db,
-            account_id=account.id,
             event_type=SecurityEventType.PAIRING_ATTEMPT_FAILED,
             detail="Expired or exhausted pairing code.",
             device_id=matched.device_id,
@@ -124,7 +121,6 @@ def confirm_pairing(
     if matched.code_hash != hash_secret(code):
         record_event(
             db,
-            account_id=account.id,
             event_type=SecurityEventType.PAIRING_ATTEMPT_FAILED,
             detail="Incorrect pairing code.",
             device_id=matched.device_id,
@@ -140,19 +136,12 @@ def confirm_pairing(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Device is not available for pairing."
         )
-    if device.account_id is not None and device.account_id != account.id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Device is already paired to another account."
-        )
 
-    device.account_id = account.id
     device.status = DeviceStatus.active
     device.paired_at = now
     matched.used_at = now
-    matched.account_id = account.id
     record_event(
         db,
-        account_id=account.id,
         event_type=SecurityEventType.DEVICE_PAIRED,
         detail=f"Device '{device.name}' paired.",
         device_id=device.id,

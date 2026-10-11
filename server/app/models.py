@@ -1,8 +1,8 @@
 """SQLAlchemy models for the BioUnlock backend.
 
 All identifiers use UUIDs (stored as 36-char strings for SQLite/PostgreSQL
-portability). Secrets are never stored in plaintext: session tokens are stored
-as SHA-256 hashes, pairing codes as hashes, and passwords as bcrypt hashes.
+portability). Secrets are never stored in plaintext: pairing codes are stored
+as hashes.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import enum
 from datetime import UTC, datetime
 
 from sqlalchemy import (
-    Boolean,
     DateTime,
     Enum,
     ForeignKey,
@@ -49,9 +48,6 @@ class ChallengePurpose(str, enum.Enum):
 
 
 class SecurityEventType(str, enum.Enum):
-    USER_REGISTERED = "user_registered"
-    USER_LOGIN = "user_login"
-    USER_LOGOUT = "user_logout"
     PASSKEY_REGISTERED = "passkey_registered"
     PASSKEY_REMOVED = "passkey_removed"
     DEVICE_ENROLLED = "device_enrolled"
@@ -68,51 +64,10 @@ class SecurityEventType(str, enum.Enum):
     RATE_LIMITED = "rate_limited"
 
 
-class Account(Base):
-    __tablename__ = "accounts"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(128))
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
-    )
-
-    credentials: Mapped[list[WebAuthnCredential]] = relationship(
-        back_populates="account", cascade="all, delete-orphan"
-    )
-    devices: Mapped[list[Device]] = relationship(
-        back_populates="account", cascade="all, delete-orphan"
-    )
-    auth_requests: Mapped[list[AuthRequest]] = relationship(
-        back_populates="account", cascade="all, delete-orphan"
-    )
-
-
-class SessionToken(Base):
-    __tablename__ = "session_tokens"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    account_id: Mapped[str] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
-    )
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-
 class WebAuthnCredential(Base):
     __tablename__ = "webauthn_credentials"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    account_id: Mapped[str] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
-    )
     credential_id: Mapped[str] = mapped_column(String(1024), unique=True, index=True)
     public_key: Mapped[bytes] = mapped_column(LargeBinary)
     sign_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -123,8 +78,6 @@ class WebAuthnCredential(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    account: Mapped[Account] = relationship(back_populates="credentials")
-
 
 class Challenge(Base):
     """A WebAuthn challenge issued by the RP and validated once."""
@@ -132,9 +85,6 @@ class Challenge(Base):
     __tablename__ = "challenges"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    account_id: Mapped[str] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
-    )
     purpose: Mapped[ChallengePurpose] = mapped_column(
         Enum(ChallengePurpose, native_enum=False, length=32)
     )
@@ -155,9 +105,6 @@ class Device(Base):
     __tablename__ = "devices"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    account_id: Mapped[str | None] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), index=True, nullable=True
-    )
     name: Mapped[str] = mapped_column(String(200))
     platform: Mapped[str] = mapped_column(String(50), default="windows")
     public_key_pem: Mapped[str] = mapped_column(Text)
@@ -175,7 +122,6 @@ class Device(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    account: Mapped[Account | None] = relationship(back_populates="devices")
     auth_requests: Mapped[list[AuthRequest]] = relationship(
         back_populates="device", cascade="all, delete-orphan"
     )
@@ -187,9 +133,6 @@ class PairingCode(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     device_id: Mapped[str] = mapped_column(
         ForeignKey("devices.id", ondelete="CASCADE"), index=True
-    )
-    account_id: Mapped[str | None] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True
     )
     code_hash: Mapped[str] = mapped_column(String(64))
     code_prefix: Mapped[str] = mapped_column(String(16), index=True)
@@ -206,9 +149,6 @@ class AuthRequest(Base):
     __tablename__ = "auth_requests"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    account_id: Mapped[str] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
-    )
     pc_id: Mapped[str] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
     challenge_id: Mapped[str | None] = mapped_column(
         ForeignKey("challenges.id", ondelete="SET NULL"), nullable=True
@@ -226,7 +166,6 @@ class AuthRequest(Base):
     ack_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ack_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    account: Mapped[Account] = relationship(back_populates="auth_requests")
     device: Mapped[Device] = relationship(back_populates="auth_requests")
 
 
@@ -234,9 +173,6 @@ class SecurityEvent(Base):
     __tablename__ = "security_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    account_id: Mapped[str] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
-    )
     device_id: Mapped[str | None] = mapped_column(
         ForeignKey("devices.id", ondelete="SET NULL"), nullable=True
     )

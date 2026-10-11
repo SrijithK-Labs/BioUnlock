@@ -1,7 +1,6 @@
 """Cryptographic primitives used by BioUnlock.
 
-- Passwords: bcrypt.
-- Session tokens: opaque random tokens stored hashed (SHA-256).
+- Hashing: secrets are stored hashed (SHA-256).
 - Server signing key: Ed25519 loaded from / generated into a protected file.
 - Signatures are produced with the ``cryptography`` library.
 
@@ -11,10 +10,10 @@ Never invent algorithms. Never log key material.
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 from pathlib import Path
 
-import bcrypt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -25,13 +24,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 ENVELOPE_LABEL = "biounlock-envelope-v1"
 DEVICE_AUTH_LABEL = "biounlock-device-auth-v1"
 
-
-def new_token() -> str:
-    return secrets.token_urlsafe(32)
-
-
-def hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+# Env var holding the Ed25519 private key as PEM. Intended for hosts with an
+# ephemeral filesystem (e.g. serverless) where the key file cannot persist; a
+# stable key keeps agents trusting the same server identity across deploys.
+SIGNING_KEY_ENV = "BIO_SIGNING_KEY"
 
 
 def hash_secret(value: str) -> str:
@@ -40,17 +36,6 @@ def hash_secret(value: str) -> str:
 
 def constant_time_equals(a: str, b: str) -> bool:
     return secrets.compare_digest(a, b)
-
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    try:
-        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
-    except ValueError:
-        return False
 
 
 class SigningKeyError(RuntimeError):
@@ -81,11 +66,38 @@ class ServerSigningKey:
         return self._path
 
     def _load_or_create(self, overwrite: bool) -> None:
+        env_pem = os.environ.get(SIGNING_KEY_ENV)
+        if env_pem and not overwrite:
+            self._private_key = self._load_pem(env_pem)
+            return
         if overwrite or not self._path.exists():
             self._create()
             return
         raw = self._path.read_bytes()
         self._private_key = serialization.load_pem_private_key(raw, password=None)
+
+    @staticmethod
+    def _load_pem(value: str) -> Ed25519PrivateKey:
+        # Accept both real newlines and a single-line value where newlines are
+        # written as literal ``\n`` (common for env vars in dashboards).
+        candidates = [value]
+        if "\\n" in value:
+            candidates.append(value.replace("\\n", "\n"))
+        last_error: Exception | None = None
+        for candidate in candidates:
+            try:
+                key = serialization.load_pem_private_key(
+                    candidate.strip().encode("utf-8"), password=None
+                )
+            except (ValueError, TypeError) as exc:
+                last_error = exc
+                continue
+            if not isinstance(key, Ed25519PrivateKey):
+                raise SigningKeyError(f"{SIGNING_KEY_ENV} must be an Ed25519 private key")
+            return key
+        raise SigningKeyError(
+            f"{SIGNING_KEY_ENV} is set but is not a valid PEM private key"
+        ) from last_error
 
     def _create(self) -> None:
         self._private_key = ed25519.Ed25519PrivateKey.generate()
