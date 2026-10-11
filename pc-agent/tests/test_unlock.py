@@ -36,6 +36,14 @@ def test_empty_username_rejected(home):
         unlock.save_windows_credential(home, unlock.WindowsCredential("", "x"))
 
 
+def test_credential_roundtrip_machine_scope(home):
+    unlock.save_windows_credential(
+        home, unlock.WindowsCredential("user", "secret", "DOMAIN"), machine=True
+    )
+    cred = unlock.load_windows_credential(home)
+    assert (cred.username, cred.password, cred.domain) == ("user", "secret", "DOMAIN")
+
+
 def test_ticket_issue_and_read(home):
     now = time.time()
     unlock.issue_unlock_ticket(

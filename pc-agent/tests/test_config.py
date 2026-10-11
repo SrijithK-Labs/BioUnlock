@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from biounlock_agent.config import ENV_HOME, AgentConfig, ConfigStore, default_home
+from biounlock_agent.config import (
+    ENV_HOME,
+    ENV_MACHINE_SECRETS,
+    ENV_SHARED_HOME,
+    SERVICE_MARKER,
+    AgentConfig,
+    ConfigStore,
+    default_home,
+    service_mode,
+)
 
 
 def test_config_roundtrip(home):
@@ -80,3 +89,35 @@ def test_default_home_honors_env_override(monkeypatch, tmp_path):
     target = tmp_path / "custom-home"
     monkeypatch.setenv(ENV_HOME, str(target))
     assert default_home() == target
+
+
+def test_service_mode_enabled_by_env(monkeypatch, tmp_path):
+    monkeypatch.delenv(ENV_HOME, raising=False)
+    monkeypatch.setenv(ENV_SHARED_HOME, str(tmp_path / "shared"))
+    monkeypatch.setenv(ENV_MACHINE_SECRETS, "1")
+    assert service_mode() is True
+    assert default_home() == tmp_path / "shared"
+
+
+def test_service_mode_enabled_by_marker(monkeypatch, tmp_path):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / SERVICE_MARKER).write_text("{}", encoding="utf-8")
+    monkeypatch.delenv(ENV_HOME, raising=False)
+    monkeypatch.delenv(ENV_MACHINE_SECRETS, raising=False)
+    monkeypatch.setenv(ENV_SHARED_HOME, str(shared))
+    assert service_mode() is True
+    assert default_home() == shared
+
+
+def test_service_mode_defaults_off(monkeypatch, tmp_path):
+    monkeypatch.delenv(ENV_MACHINE_SECRETS, raising=False)
+    monkeypatch.setenv(ENV_SHARED_HOME, str(tmp_path / "empty-shared"))
+    assert service_mode() is False
+
+
+def test_explicit_home_override_wins_over_service_mode(monkeypatch, tmp_path):
+    monkeypatch.setenv(ENV_MACHINE_SECRETS, "1")
+    monkeypatch.setenv(ENV_HOME, str(tmp_path / "explicit"))
+    assert default_home() == tmp_path / "explicit"
+

@@ -19,6 +19,10 @@ from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
+# CRYPTPROTECT_LOCAL_MACHINE from dpapi.h. Not exposed as a constant by
+# pywin32's win32crypt, so the numeric value is used directly.
+_CRYPTPROTECT_LOCAL_MACHINE = 0x04
+
 
 @runtime_checkable
 class SecretStore(Protocol):
@@ -67,16 +71,21 @@ class FileSecretStore:
 
 
 class DpapiSecretStore:
-    """Windows DPAPI (current-user) protected secret store.
+    """Windows DPAPI-protected secret store.
 
-    Requires ``pywin32``. Blobs are protected with ``CryptProtectData`` and are
-    only decryptable by the same Windows user on the same machine.
+    Requires ``pywin32``. Blobs are protected with ``CryptProtectData``. By
+    default this is *current-user* scope (only the same Windows user on the same
+    machine can decrypt). When ``machine=True`` the blob uses *machine* scope so
+    a SYSTEM-run Windows service can decrypt the device key before anyone logs
+    in; that widens who can decrypt it to any process on the machine, which is
+    necessary for pre-login unlocking.
     """
 
-    def __init__(self, base_dir: Path) -> None:
+    def __init__(self, base_dir: Path, *, machine: bool = False) -> None:
         import win32crypt  # noqa: F401  (imported for availability check)
 
         self._win32crypt = win32crypt
+        self._machine = machine
         self.base_dir = Path(base_dir)
 
     def _path(self, name: str) -> Path:
@@ -88,13 +97,15 @@ class DpapiSecretStore:
         if not path.exists():
             return None
         blob = path.read_bytes()
+        # CryptUnprotectData detects the scope, so reads work either way.
         _description, data = self._win32crypt.CryptUnprotectData(blob, None, None, None, 0)
         return data
 
     def set(self, name: str, value: bytes) -> None:
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        flags = _CRYPTPROTECT_LOCAL_MACHINE if self._machine else 0
         blob = self._win32crypt.CryptProtectData(
-            value, "BioUnlock device key", None, None, None, 0
+            value, "BioUnlock device key", None, None, None, flags
         )
         path = self._path(name)
         tmp = path.with_suffix(".bin.tmp")
@@ -115,11 +126,19 @@ def dpapi_available() -> bool:
     return True
 
 
-def default_secret_store(base_dir: Path) -> SecretStore:
-    """Return DPAPI storage on Windows, otherwise a plaintext fallback."""
+def default_secret_store(base_dir: Path, *, machine: bool | None = None) -> SecretStore:
+    """Return DPAPI storage on Windows, otherwise a plaintext fallback.
+
+    When *machine* is ``None`` it follows :func:`biounlock_agent.config.service_mode`
+    so an installed service transparently switches to machine-scope secrets.
+    """
+    if machine is None:
+        from biounlock_agent.config import service_mode
+
+        machine = service_mode()
     base_dir = Path(base_dir)
     if os.name == "nt" and dpapi_available():
-        return DpapiSecretStore(base_dir)
+        return DpapiSecretStore(base_dir, machine=machine)
     if os.name == "nt":
         logger.warning(
             "pywin32 is not installed; the device key will be stored WITHOUT DPAPI "

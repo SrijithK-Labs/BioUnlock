@@ -21,16 +21,50 @@ logger = logging.getLogger(__name__)
 APP_DIR_NAME = "BioUnlock"
 ENV_HOME = "BIOUNLOCK_AGENT_HOME"
 ENV_SHARED_HOME = "BIOUNLOCK_AGENT_SHARED_HOME"
+ENV_MACHINE_SECRETS = "BIOUNLOCK_AGENT_MACHINE_SECRETS"
 CONFIG_FILENAME = "config.json"
 REPLAY_FILENAME = "replay.sqlite3"
 DEVICE_KEY_NAME = "device_key"
+# Marker written by the service installer. Its presence means the agent is
+# installed machine-wide (a boot-start service and the tray both use the shared
+# %ProgramData%\BioUnlock home and DPAPI machine-scope secrets).
+SERVICE_MARKER = "service.json"
+
+
+def _env_truthy(name: str) -> bool:
+    value = os.environ.get(name)
+    return value is not None and value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def service_mode() -> bool:
+    """Whether the agent is installed machine-wide (boot-start service).
+
+    True when ``BIOUNLOCK_AGENT_MACHINE_SECRETS`` is set, or when the installer's
+    marker file is present next to the shared home. In this mode the config,
+    device key, replay database and Windows credential all live under
+    ``%ProgramData%\\BioUnlock`` and secrets use DPAPI *machine* scope so a
+    SYSTEM-run service can read them before anyone logs in.
+    """
+    if _env_truthy(ENV_MACHINE_SECRETS):
+        return True
+    try:
+        return (default_shared_home() / SERVICE_MARKER).exists()
+    except OSError:  # pragma: no cover - defensive
+        return False
 
 
 def default_home() -> Path:
-    """Resolve the agent home directory, honoring ``BIOUNLOCK_AGENT_HOME``."""
+    """Resolve the agent home directory.
+
+    Honors ``BIOUNLOCK_AGENT_HOME`` first, then the shared machine home when the
+    agent is installed as a service (see :func:`service_mode`); otherwise the
+    per-user ``%LOCALAPPDATA%\\BioUnlock`` on Windows.
+    """
     override = os.environ.get(ENV_HOME)
     if override:
         return Path(override)
+    if service_mode():
+        return default_shared_home()
     if os.name == "nt":
         base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
         if base:

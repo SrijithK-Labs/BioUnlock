@@ -18,7 +18,9 @@ pieces implement this:
 
 1. **Enrollment (once, user session).** `python -m biounlock_agent set-credential`
    prompts for the Windows password and stores it DPAPI-protected in
-   *current-user* scope at `%LOCALAPPDATA%\BioUnlock\windows_credential.bin`.
+   *current-user* scope at `%LOCALAPPDATA%\BioUnlock\windows_credential.bin`
+   (or, when the boot-start service is installed, *machine* scope at
+   `%ProgramData%\BioUnlock\windows_credential.bin` — see "Pre-login support").
 2. **Approval.** The phone approves a `remote_unlock`. The agent verifies the
    server-signed envelope exactly as before (signature, PC binding, freshness,
    replay) and acknowledges it `verified`.
@@ -35,6 +37,36 @@ pieces implement this:
 5. **Lock (optional).** A verified `remote_lock` needs no credential or ticket:
    the agent calls `LockWorkStation()` directly (reporting `already_locked` when
    the workstation is already locked, or `lock_failed` on error).
+
+## Pre-login support (boot-start service)
+
+The flow above runs in the user's session, so it only works **after** someone
+logs in. To unlock at the **sign-in screen after a reboot**, BioUnlock installs
+the agent as a boot-start Windows service (`biounlock_agent/service.py`) that:
+
+- runs as **LocalSystem** and starts before anyone signs in;
+- uses the machine-wide home `%ProgramData%\BioUnlock` with DPAPI **machine**-scope
+  secrets, so the device key and Windows credential written by the in-session tray
+  are readable before login;
+- runs the agent **only while no interactive user is signed in**. When a user logs
+  on it hands control to the tray, which is the only process that can lock the
+  interactive desktop. The two never run at once.
+
+Install / uninstall (both require an **elevated** PowerShell):
+
+```powershell
+# from pc-agent/
+powershell -ExecutionPolicy Bypass -File install-service.ps1
+powershell -ExecutionPolicy Bypass -File uninstall-service.ps1
+```
+
+`install-service.ps1` creates `%ProgramData%\BioUnlock` (SYSTEM/Administrators
+full, Users modify), writes the `service.json` marker, and registers/starts the
+`BioUnlockAgent` service. The marker makes `config.service_mode()` true, so the
+tray transparently switches to the shared home and machine-scope secrets too.
+
+Because the home moves, **re-link the tray and re-run `set-credential` once after
+installing**, then reboot and unlock from the phone at the sign-in screen.
 
 ## Trust and failure rules
 

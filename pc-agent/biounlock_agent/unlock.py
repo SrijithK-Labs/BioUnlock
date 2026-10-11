@@ -223,10 +223,21 @@ def _decode_ticket(payload: bytes) -> dict:
     }
 
 
-def save_windows_credential(home: Path, credential: WindowsCredential) -> Path:
-    """DPAPI (user-scope) protect and persist a Windows credential."""
+def save_windows_credential(
+    home: Path, credential: WindowsCredential, *, machine: bool | None = None
+) -> Path:
+    """DPAPI-protect and persist a Windows credential.
+
+    Uses *current-user* scope by default. When *machine* is ``None`` it follows
+    :func:`biounlock_agent.config.service_mode`, because a SYSTEM-run service
+    cannot unprotect a current-user blob and needs machine scope instead.
+    """
     if not credential.username:
         raise UnlockError("username must not be empty")
+    if machine is None:
+        from biounlock_agent.config import service_mode
+
+        machine = service_mode()
     payload = json.dumps(
         {
             "v": CREDENTIAL_VERSION,
@@ -236,7 +247,7 @@ def save_windows_credential(home: Path, credential: WindowsCredential) -> Path:
         },
         separators=(",", ":"),
     ).encode("utf-8")
-    blob = _protect(payload, machine=False)
+    blob = _protect(payload, machine=machine)
     path = credential_path(home)
     _atomic_write(path, blob)
     return path
