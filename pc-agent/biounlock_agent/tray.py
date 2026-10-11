@@ -21,6 +21,7 @@ import queue
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pystray
@@ -40,7 +41,6 @@ AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 AUTOSTART_VALUE_NAME = "BioUnlock"
 INSTANCE_MUTEX_NAME = "BioUnlockTray"
 ICON_SIZE = 64
-PAIRING_TIMEOUT_SECONDS = 300.0
 
 # Kept alive for the whole process so Windows does not release the lock early.
 _instance_mutex: object | None = None
@@ -62,6 +62,36 @@ def render_qr_image(payload: str) -> Image.Image | None:
     image = Image.open(buffer).convert("L")
     image.load()
     return image
+
+
+def watch_for_pairing(
+    agent: Agent,
+    *,
+    closing: Callable[[], bool],
+    on_paired: Callable[[], None],
+    poll_interval: float = 5.0,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Poll the server until this PC is paired, then call *on_paired*.
+
+    Runs off the UI thread and keeps going until the PC is paired, is no longer
+    enrolled, or *closing* returns ``True``. This is what lets the tray notice a
+    phone-side pairing on its own, instead of only during the brief window right
+    after "Link this PC" (which forced users to restart the app).
+    """
+    while not closing():
+        if agent.config.is_paired:
+            return
+        if not agent.config.is_enrolled:
+            return
+        try:
+            paired = agent.refresh_pairing().paired
+        except Exception:  # noqa: BLE001 - keep watching through transient errors
+            paired = False
+        if paired:
+            on_paired()
+            return
+        sleep(poll_interval)
 
 
 def _acquire_single_instance() -> bool:
@@ -249,6 +279,7 @@ class TrayApp:
         self._qr_label = None
         self._pairing_label = None
         self._photo = None
+        self._pairing_thread: threading.Thread | None = None
 
         self.icon = pystray.Icon(
             "BioUnlock", create_icon_image(), "BioUnlock", menu=self._build_menu()
@@ -466,21 +497,27 @@ class TrayApp:
             self.post(lambda error=str(exc): self._on_link_failed(error))
             return
         self.post(lambda: self._on_enrolled(enrollment.pairing_code, enrollment.qr_payload))
-        paired = self._wait_for_pairing()
-        self.post(lambda: self._on_link_done(paired))
+        self._start_pairing_watch()
 
-    def _wait_for_pairing(self) -> bool:
-        deadline = time.monotonic() + PAIRING_TIMEOUT_SECONDS
-        while not self._closing and time.monotonic() < deadline:
-            try:
-                if self.agent.refresh_pairing().paired:
-                    return True
-            except Exception:  # noqa: BLE001 - keep polling
-                pass
-            time.sleep(3)
-        return self.agent.config.paired
+    def _start_pairing_watch(self) -> None:
+        """Watch for a phone-side pairing without blocking the UI or exiting early."""
+        if self._pairing_thread is not None and self._pairing_thread.is_alive():
+            return
+        self._pairing_thread = threading.Thread(
+            target=watch_for_pairing,
+            args=(self.agent,),
+            kwargs={
+                "closing": lambda: self._closing,
+                "on_paired": lambda: self.post(self._on_paired),
+            },
+            name="biounlock-pairing",
+            daemon=True,
+        )
+        self._pairing_thread.start()
 
     def _on_enrolled(self, pairing_code: str, qr_payload: str) -> None:
+        if self._link_button is not None:
+            self._link_button.config(state="normal")
         if self._pairing_label is not None:
             self._pairing_label.config(
                 text=f"Scan this code with the BioUnlock app (or enter it):\n{pairing_code}\n"
@@ -489,16 +526,13 @@ class TrayApp:
         self._show_qr(qr_payload)
         self._refresh_status()
 
-    def _on_link_done(self, paired: bool) -> None:
-        if self._link_button is not None:
-            self._link_button.config(state="normal")
-        if paired:
-            self._set_status("Linked. The agent is starting.")
-            if not self.runner.is_running():
-                self.runner.start()
-            self.icon.update_menu()
-        else:
-            self._set_status("Not linked yet. Check the app and try Link again.")
+    def _on_paired(self) -> None:
+        if self._pairing_label is not None:
+            self._pairing_label.config(text="Paired. This PC is linked.")
+        self._set_status("Linked. The agent is starting.")
+        if not self.runner.is_running():
+            self.runner.start()
+        self.icon.update_menu()
         self._refresh_status()
 
     def _on_link_failed(self, message: str) -> None:
@@ -617,6 +651,10 @@ class TrayApp:
     def run(self) -> None:
         if self.agent.config.is_enrolled and self.agent.config.is_paired:
             self.runner.start()
+        elif self.agent.config.is_enrolled:
+            # Enrolled but waiting on the phone: keep watching so a pairing that
+            # happens later (or after the link window) is picked up on its own.
+            self._start_pairing_watch()
         self.icon.run()
 
 
