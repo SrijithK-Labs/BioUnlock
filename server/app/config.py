@@ -41,6 +41,35 @@ def _normalize_postgres_url(url: str) -> str:
     return url
 
 
+def _find_integration_database_url() -> str | None:
+    """Find a Postgres URL under any ``*DATABASE_URL`` env var.
+
+    Storage integrations prefix their variables with the store name (e.g.
+    ``biounlockdb_DATABASE_URL``), so the exact name varies per project.
+    """
+    candidates = [
+        name
+        for name, value in os.environ.items()
+        if name.upper().endswith("DATABASE_URL")
+        and not name.upper().startswith("BIO_")
+        and value
+        and value.lower().startswith(("postgres://", "postgresql://"))
+    ]
+    if not candidates:
+        return None
+
+    def _rank(name: str) -> int:
+        upper = name.upper()
+        if "UNPOOLED" in upper or "NON_POOLING" in upper or "NO_SSL" in upper:
+            return 2
+        if "POOL" in upper:
+            return 0
+        return 1
+
+    candidates.sort(key=lambda n: (_rank(n), n))
+    return os.environ[candidates[0]]
+
+
 def _parse_list(value: object) -> list[str]:
     if isinstance(value, str):
         return [item.strip() for item in value.split(",") if item.strip()]
@@ -112,6 +141,8 @@ class Settings(BaseSettings):
                 if value:
                     url = value
                     break
+            else:
+                url = _find_integration_database_url() or url
         self.database_url = _normalize_postgres_url(url)
         return self
 

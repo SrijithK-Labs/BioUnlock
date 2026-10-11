@@ -57,8 +57,9 @@ git ls-files | Select-String -Pattern '\.env$|\.pem$|\.key$|signing'
    default `sqlite:///./biounlock.db` loses every device and pairing on each
    deploy. In the project's **Storage** tab create a **Postgres** database
    (Marketplace → Neon) and connect it; Vercel injects `DATABASE_URL` /
-   `POSTGRES_URL`, which the app now adopts automatically (and rewrites to the
-   `psycopg` driver). If you prefer, set `BIO_DATABASE_URL` yourself instead.
+   `POSTGRES_URL` (often store-prefixed, e.g. `biounlockdb_DATABASE_URL`), which
+   the app adopts automatically (and rewrites to the `psycopg` driver, preferring
+   the pooled URL). If you prefer, set `BIO_DATABASE_URL` yourself instead.
    Then run migrations once against that database from your machine:
 
    ```powershell
