@@ -1,0 +1,67 @@
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+server_signing_key.json
+agent_identity.json
+secrets/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+build/
+dist/
+*.spec
+!pc-agent/installer/biounlock_agent.spec
+
+# --- Databases ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Flutter / Dart ---
+mobile/biounlock_mobile/.dart_tool/
+mobile/biounlock_mobile/.flutter-plugins
+mobile/biounlock_mobile/.flutter-plugins-dependencies
+mobile/biounlock_mobile/build/
+mobile/biounlock_mobile/android/.gradle/
+mobile/biounlock_mobile/android/local.properties
+mobile/biounlock_mobile/android/key.properties
+mobile/biounlock_mobile/ios/Pods/
+mobile/biounlock_mobile/ios/.symlinks/
+mobile/biounlock_mobile/**/*.g.dart
+mobile/biounlock_mobile/**/*.freezed.dart
+
+# --- Installer output ---
+installer/Output/
+installer/*.exe
+pc-agent/installer/Output/
+*.msi
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs ---
+*.log
+logs/
