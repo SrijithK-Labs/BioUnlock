@@ -1,7 +1,14 @@
 # Deploying the BioUnlock backend to Vercel
 
-The backend lives in `server/` and is a FastAPI app. On Vercel it runs as a
-Python serverless function via `server/api/index.py` (see `server/vercel.json`).
+The backend lives in `server/` and is a FastAPI app. Vercel has a native
+**FastAPI preset**: it detects the ASGI `app` and serves it on every route, so
+no `api/` function or catch-all rewrite is needed. The entrypoint is declared in
+`server/pyproject.toml`:
+
+```toml
+[tool.vercel]
+entrypoint = "app.main:app"
+```
 
 ## Project setup
 
@@ -10,7 +17,8 @@ Python serverless function via `server/api/index.py` (see `server/vercel.json`).
    dependencies.
 2. Dependencies are declared in `server/pyproject.toml` (`[project].dependencies`).
    Vercel installs them with `uv`. (`server/requirements.txt` is kept in sync for
-   local `pip` installs.)
+   local `pip` installs.) The `app` package is importable because the project
+   root is `server/`.
 3. Vercel pins a Python version; add a `server/.python-version` (e.g. `3.12`) if
    you want it fixed.
 

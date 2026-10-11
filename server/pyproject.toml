@@ -23,6 +23,11 @@ dependencies = [
 [tool.uv]
 package = false
 
+# Vercel's FastAPI preset serves this ASGI app on every route, so no /api
+# function or catch-all rewrite is needed.
+[tool.vercel]
+entrypoint = "app.main:app"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
