@@ -66,7 +66,8 @@ For each delivered envelope the agent checks, in order:
 2. The Ed25519 `signature` over
    `biounlock-envelope-v1|request_id|account_id|pc_id|operation|issued_at|expires_at|nonce`.
 3. `pc_id` is this device.
-4. `operation` is the single allowed operation (`remote_unlock`).
+4. `operation` is one of the allowed operations (`remote_unlock` or
+   `remote_lock`).
 5. Freshness (`expires_at`, `issued_at` within a small clock skew).
 6. Replay: the `request_id`/`nonce` was not already processed (persistent
    SQLite dedupe).
@@ -74,7 +75,10 @@ For each delivered envelope the agent checks, in order:
 Only an envelope that passes all checks is acknowledged `verified`; authentic
 envelopes that fail semantics (expired, unsupported operation, clock skew) are
 acknowledged `rejected` with a reason code. Anything whose signature cannot be
-trusted is dropped silently. The agent never executes anything from an envelope.
+trusted is dropped silently. `remote_unlock` mints a short-lived single-use
+ticket for the Credential Provider; `remote_lock` locks the workstation (a
+no-op reported as `already_locked` when it is already locked). The agent never
+executes anything from an envelope.
 
 ## Files and protection
 

@@ -189,7 +189,54 @@ def test_verified_unlock_when_already_unlocked_skips_ticket(home, fake_api, api_
     outcome = agent.handle_envelope(build_envelope(server_key, pc_id="pc-1"))
 
     assert outcome.outcome == "verified"
+    assert outcome.reason_code == "already_unlocked"
     assert unlock.read_unlock_ticket(home) is None
+
+
+def test_verified_lock_locks_workstation(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint, monkeypatch):
+    agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
+    monkeypatch.setattr(unlock, "is_workstation_locked", lambda: False)
+    calls = []
+    monkeypatch.setattr(unlock, "lock_workstation", lambda: calls.append(True))
+
+    outcome = agent.handle_envelope(build_envelope(server_key, pc_id="pc-1", operation="remote_lock"))
+
+    assert outcome.outcome == "verified"
+    assert outcome.reason_code is None
+    assert calls == [True]
+    assert fake_api.acks[-1]["status"] == "verified"
+    assert fake_api.acks[-1]["reason_code"] is None
+
+
+def test_verified_lock_when_already_locked_reports_reason(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint, monkeypatch):
+    agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
+    monkeypatch.setattr(unlock, "is_workstation_locked", lambda: True)
+    calls = []
+    monkeypatch.setattr(unlock, "lock_workstation", lambda: calls.append(True))
+
+    outcome = agent.handle_envelope(build_envelope(server_key, pc_id="pc-1", operation="remote_lock"))
+
+    assert outcome.outcome == "verified"
+    assert outcome.reason_code == "already_locked"
+    assert calls == []
+    assert fake_api.acks[-1]["reason_code"] == "already_locked"
+
+
+def test_verified_lock_failure_is_rejected(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint, monkeypatch):
+    agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
+    monkeypatch.setattr(unlock, "is_workstation_locked", lambda: False)
+
+    def boom() -> None:
+        raise unlock.UnlockError("nope")
+
+    monkeypatch.setattr(unlock, "lock_workstation", boom)
+
+    outcome = agent.handle_envelope(build_envelope(server_key, pc_id="pc-1", operation="remote_lock"))
+
+    assert outcome.outcome == "rejected"
+    assert outcome.reason_code == "lock_failed"
+    assert fake_api.acks[-1]["status"] == "rejected"
+    assert fake_api.acks[-1]["reason_code"] == "lock_failed"
 
 
 @pytest.mark.skipif(not unlock.dpapi_available(), reason="Windows DPAPI is not available")

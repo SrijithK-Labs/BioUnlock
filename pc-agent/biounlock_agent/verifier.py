@@ -19,7 +19,7 @@ from biounlock_agent.crypto import (
 from biounlock_agent.errors import EnvelopeVerificationError
 from biounlock_agent.replay import ReplayStore
 
-ALLOWED_OPERATIONS = frozenset({"remote_unlock"})
+ALLOWED_OPERATIONS = frozenset({"remote_unlock", "remote_lock"})
 DEFAULT_CLOCK_SKEW_SECONDS = 30
 
 

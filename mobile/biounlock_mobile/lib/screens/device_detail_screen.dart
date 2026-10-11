@@ -46,9 +46,17 @@ class DeviceDetailScreen extends StatelessWidget {
             FilledButton.icon(
               onPressed: (!device.isActive || requests.busy)
                   ? null
-                  : () => _authorize(context),
+                  : () => _authorize(context, 'remote_unlock'),
               icon: const Icon(Icons.lock_open),
-              label: Text(requests.busy ? 'Authorizing…' : 'Authorize this PC'),
+              label: Text(requests.busy ? 'Working…' : 'Unlock this PC'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: (!device.isActive || requests.busy)
+                  ? null
+                  : () => _authorize(context, 'remote_lock'),
+              icon: const Icon(Icons.lock_outline),
+              label: const Text('Lock this PC'),
             ),
             if (requests.stage != null)
               Padding(
@@ -99,20 +107,14 @@ class DeviceDetailScreen extends StatelessWidget {
     ),
   );
 
-  Future<void> _authorize(BuildContext context) async {
-    final outcome = await requests.authorize(pcId: device.id);
+  Future<void> _authorize(BuildContext context, String operation) async {
+    final outcome = await requests.authorize(pcId: device.id, operation: operation);
     if (!context.mounted) return;
-    final message = switch (outcome.status) {
-      'verified' => 'PC verified the request. Access granted.',
-      'rejected' => 'PC rejected the request.${outcome.request?.ackReason != null ? ' (${outcome.request!.ackReason})' : ''}',
-      'expired' => 'The request expired before the PC responded.',
-      _ => outcome.message ?? 'Authorization could not be completed.',
-    };
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(outcome.succeeded ? 'Verified' : 'Not verified'),
-        content: Text(message),
+        title: Text(outcome.succeeded ? 'Done' : 'Not completed'),
+        content: Text(_outcomeMessage(outcome, operation)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -121,6 +123,25 @@ class DeviceDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _outcomeMessage(AuthorizationOutcome outcome, String operation) {
+    final reason = outcome.request?.ackReason;
+    switch (outcome.status) {
+      case 'verified':
+        if (reason == 'already_unlocked') return 'This PC is already unlocked.';
+        if (reason == 'already_locked') return 'This PC is already locked.';
+        return operation == 'remote_lock'
+            ? 'The PC was locked.'
+            : 'The PC was unlocked.';
+      case 'rejected':
+        if (reason == 'lock_failed') return 'The PC could not be locked.';
+        return 'The PC rejected the request.${reason != null ? ' ($reason)' : ''}';
+      case 'expired':
+        return 'The request expired before the PC responded.';
+      default:
+        return outcome.message ?? 'Authorization could not be completed.';
+    }
   }
 
   Future<void> _revoke(BuildContext context) async {

@@ -45,7 +45,7 @@ cannot forge envelopes for an already-paired PC.
 
 ### 1. Challenge (server)
 
-`POST /api/v1/auth/challenges` body: `{ pc_id, operation: "remote_unlock" }`.
+`POST /api/v1/auth/challenges` body: `{ pc_id }`.
 
 Response (`ChallengeResponse`):
 
@@ -75,11 +75,15 @@ WebAuthn spec). It then submits:
 {
   "challenge_id": "uuid",
   "pc_id": "uuid",
+  "operation": "remote_unlock",
   "assertion": { "id": "...", "rawId": "...", "type": "public-key",
                  "response": { "authenticatorData": "...", "clientDataJSON": "...",
                                "signature": "...", "userHandle": "..." } }
 }
 ```
+
+`operation` is one of the supported operations (`remote_unlock` or
+`remote_lock`) and defaults to `remote_unlock` when omitted.
 
 ### 3. Server verification and envelope
 
@@ -128,13 +132,18 @@ The agent accepts the envelope **only if all** hold:
 
 Failure → the agent marks the request `rejected` (reason code, no secrets)
 and drops the envelope. It **never** executes anything from the envelope other
-than the single registered operation, and it never treats mere delivery from
-the server as authorization to unlock a session.
+than a registered operation (`remote_unlock` or `remote_lock`), and it never
+treats mere delivery from the server as authorization to unlock a session.
 
 ### 5. Acknowledgment
 
 `POST /api/v1/requests/{id}/ack` body: `{ status: "verified"|"rejected",
 reason_code?, observed_at }`, signed with `sk_pc`.
+
+A `verified` ack may still carry an informational `reason_code` so the phone can
+report the true state: `already_unlocked` (the PC was not locked when an unlock
+was approved) or `already_locked` (a lock was requested while already locked). A
+failed lock is reported as `rejected` with `lock_failed`.
 
 Server validates the device signature and ownership, then updates the request
 status. Terminal statuses: `rejected`, `verified`, `completed`, `expired`.

@@ -120,11 +120,12 @@ Map<String, dynamic> requestJson({
   String id = 'req-1',
   String status = 'verified',
   String? reason,
+  String operation = 'remote_unlock',
 }) => {
   'id': id,
   'pc_id': 'dev-1',
   'pc_name': 'Workstation',
-  'operation': 'remote_unlock',
+  'operation': operation,
   'status': status,
   'created_at': '2026-01-01T00:00:00Z',
   'expires_at': '2999-01-01T00:00:00Z',

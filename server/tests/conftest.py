@@ -117,7 +117,14 @@ def register_passkey(client: TestClient, token: str, authenticator: SoftAuthenti
     return authenticator
 
 
-def create_auth_request(client: TestClient, token: str, device_id: str, authenticator: SoftAuthenticator):
+def create_auth_request(
+    client: TestClient,
+    token: str,
+    device_id: str,
+    authenticator: SoftAuthenticator,
+    *,
+    operation: str = "remote_unlock",
+):
     begin = client.post(
         "/api/v1/auth/challenges",
         json={"pc_id": device_id},
@@ -129,7 +136,12 @@ def create_auth_request(client: TestClient, token: str, device_id: str, authenti
     assertion = authenticator.get_assertion(challenge)
     created = client.post(
         "/api/v1/auth/requests",
-        json={"challenge_id": data["challenge_id"], "pc_id": device_id, "assertion": assertion},
+        json={
+            "challenge_id": data["challenge_id"],
+            "pc_id": device_id,
+            "operation": operation,
+            "assertion": assertion,
+        },
         headers=auth_header(token),
     )
     return created

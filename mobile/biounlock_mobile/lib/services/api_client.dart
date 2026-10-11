@@ -166,10 +166,12 @@ class ApiClient {
     required String challengeId,
     required String pcId,
     required Map<String, dynamic> assertion,
+    String operation = 'remote_unlock',
   }) async => AuthRequest.fromJson(
     await _send('POST', '/auth/requests', body: {
       'challenge_id': challengeId,
       'pc_id': pcId,
+      'operation': operation,
       'assertion': assertion,
     }) as Map<String, dynamic>,
   );

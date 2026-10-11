@@ -123,6 +123,19 @@ def is_workstation_locked() -> bool:
     return "logonui.exe" in result.stdout.lower()
 
 
+def lock_workstation() -> None:
+    """Lock the workstation immediately (the same action as Win+L)."""
+    if os.name != "nt":
+        raise UnlockNotSupportedError("locking the workstation is only supported on Windows")
+    try:
+        import ctypes  # noqa: PLC0415
+
+        if not ctypes.windll.user32.LockWorkStation():
+            raise UnlockError("LockWorkStation reported failure")
+    except OSError as exc:  # noqa: BLE001 - ctypes raises OSError on load failure
+        raise UnlockError(f"could not lock the workstation: {exc}") from exc
+
+
 def _protect(blob: bytes, *, machine: bool) -> bytes:
     win32crypt = _win32crypt()
     flags = _CRYPTPROTECT_UI_FORBIDDEN | (_CRYPTPROTECT_LOCAL_MACHINE if machine else 0)

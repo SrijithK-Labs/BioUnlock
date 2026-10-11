@@ -90,6 +90,7 @@ class AuthenticationBeginResponse(BaseModel):
 class AuthenticationCompleteRequest(BaseModel):
     challenge_id: str
     pc_id: str
+    operation: Literal["remote_unlock", "remote_lock"] = "remote_unlock"
     assertion: dict[str, Any]
 
 

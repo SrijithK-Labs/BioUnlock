@@ -199,7 +199,7 @@ async def create_auth_request(
         account_id=account.id,
         pc_id=device.id,
         challenge_id=challenge.id,
-        operation="remote_unlock",
+        operation=payload.operation,
         nonce=secrets.token_hex(16),
         status=AuthRequestStatus.pending,
         expires_at=utcnow() + timedelta(seconds=settings.auth_request_ttl_seconds),

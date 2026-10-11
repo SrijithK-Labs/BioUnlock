@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:biounlock_mobile/services/api_client.dart';
 import 'package:biounlock_mobile/services/passkey_service.dart';
 import 'package:biounlock_mobile/state/requests_controller.dart';
@@ -81,5 +83,45 @@ void main() {
     final outcome = await controller.authorize(pcId: 'dev-1');
     expect(outcome.status, 'error');
     expect(controller.error, contains('cancelled'));
+  });
+
+  test('authorize sends the requested operation to the server', () async {
+    Map<String, dynamic>? captured;
+    final client = ApiClient(
+      baseUrl: 'https://example.com',
+      httpClient: routedClient({
+        'POST /api/v1/auth/challenges': (_) => ok({
+          'challenge_id': 'chal-1',
+          'options': {
+            'challenge': 'abc',
+            'rpId': 'example.com',
+            'allowCredentials': [
+              {'type': 'public-key', 'id': 'cred-id'},
+            ],
+            'userVerification': 'required',
+          },
+          'rp_id': 'example.com',
+          'expires_at': '2999-01-01T00:00:00Z',
+          'pc_id': 'dev-1',
+          'pc_name': 'Workstation',
+        }),
+        'POST /api/v1/auth/requests': (request) {
+          captured = jsonDecode(request.body) as Map<String, dynamic>;
+          return ok(requestJson(status: 'pending'), 201);
+        },
+        'GET /api/v1/requests/req-1': (_) => ok(requestJson(status: 'verified')),
+        'GET /api/v1/requests': (_) => ok([requestJson(status: 'verified')]),
+      }),
+    );
+    final controller = RequestsController(
+      api: client,
+      passkeys: FakePasskeyService(),
+      pollInterval: Duration.zero,
+      delay: (_) async {},
+    );
+
+    await controller.authorize(pcId: 'dev-1', operation: 'remote_lock');
+
+    expect(captured?['operation'], 'remote_lock');
   });
 }

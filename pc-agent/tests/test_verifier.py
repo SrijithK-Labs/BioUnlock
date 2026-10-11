@@ -31,6 +31,12 @@ def test_accepts_valid_envelope(server_key, server_pub_pem, server_fingerprint):
     assert result.operation == "remote_unlock"
 
 
+def test_accepts_remote_lock_operation(server_key, server_pub_pem, server_fingerprint):
+    envelope = build_envelope(server_key, operation="remote_lock")
+    result = _verify(envelope, server_pub_pem, server_fingerprint)
+    assert result.operation == "remote_lock"
+
+
 def test_rejects_tampered_signature(server_key, server_pub_pem, server_fingerprint):
     envelope = build_envelope(server_key, signature="AAAA")
     with pytest.raises(EnvelopeVerificationError) as exc:

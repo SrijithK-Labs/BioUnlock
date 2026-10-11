@@ -32,6 +32,9 @@ pieces implement this:
    re-enumerate; the BioUnlock tile becomes the default and auto-submits via
    `KERB_INTERACTIVE_UNLOCK_LOGON`, and **Windows performs its normal
    authentication** through the Negotiate/MSV1_0 package.
+5. **Lock (optional).** A verified `remote_lock` needs no credential or ticket:
+   the agent calls `LockWorkStation()` directly (reporting `already_locked` when
+   the workstation is already locked, or `lock_failed` on error).
 
 ## Trust and failure rules
 

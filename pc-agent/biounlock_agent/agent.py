@@ -227,25 +227,37 @@ class Agent:
             logger.warning("Dropped envelope (%s)", exc.reason_code)
             return ProcessedEnvelope(request_id, "dropped", exc.reason_code)
 
-        self._ack(verified.request_id, status="verified")
         self.processed_count += 1
-        self._issue_unlock_ticket(verified)
+        status, reason_code = self._execute_operation(verified)
+        self._ack(verified.request_id, status=status, reason_code=reason_code)
         logger.info(
             "Verified authorization request %s for account %s",
             verified.request_id,
             verified.account_id,
         )
-        return ProcessedEnvelope(verified.request_id, "verified")
+        return ProcessedEnvelope(verified.request_id, status, reason_code)
 
-    def _issue_unlock_ticket(self, verified: VerifiedEnvelope) -> None:
+    def _execute_operation(self, verified: VerifiedEnvelope) -> tuple[str, str | None]:
+        """Perform the verified operation, returning the ack status and reason."""
+        if verified.operation == "remote_unlock":
+            return "verified", self._issue_unlock_ticket(verified)
+        if verified.operation == "remote_lock":
+            return self._lock_workstation()
+        logger.warning(
+            "Ignoring verified request %s with unsupported operation %s",
+            verified.request_id,
+            verified.operation,
+        )
+        return "rejected", "unsupported_operation"
+
+    def _issue_unlock_ticket(self, verified: VerifiedEnvelope) -> str | None:
         """Turn a verified remote-unlock into a short-lived ticket for the CP.
 
-        This is best-effort: a missing credential only means the Credential
-        Provider has nothing to submit, and is logged rather than raised so the
-        request is still acknowledged as ``verified``.
+        Returns an optional reason code (``already_unlocked``) for the phone. This
+        is best-effort: a missing credential only means the Credential Provider has
+        nothing to submit, and is logged rather than raised so the request is still
+        acknowledged as ``verified``.
         """
-        if verified.operation != "remote_unlock":
-            return
         home = self.config_store.home
         if not unlock.is_workstation_locked():
             # The PC is already unlocked, so there is nothing to unlock. A ticket
@@ -256,7 +268,7 @@ class Agent:
                 "Verified unlock %s but the PC is already unlocked; no ticket issued",
                 verified.request_id,
             )
-            return
+            return "already_unlocked"
         try:
             if not unlock.has_windows_credential(home):
                 logger.warning(
@@ -264,7 +276,7 @@ class Agent:
                     "run 'biounlock_agent set-credential' to enable real unlocking.",
                     verified.request_id,
                 )
-                return
+                return None
             credential = unlock.load_windows_credential(home)
             unlock.issue_unlock_ticket(
                 self.unlock_dir, request_id=verified.request_id, credential=credential
@@ -272,6 +284,20 @@ class Agent:
             logger.info("Issued Windows unlock ticket for request %s", verified.request_id)
         except unlock.UnlockError as exc:
             logger.warning("Could not issue unlock ticket for %s: %s", verified.request_id, exc)
+        return None
+
+    def _lock_workstation(self) -> tuple[str, str | None]:
+        """Lock the workstation for a verified remote-lock. Idempotent."""
+        if unlock.is_workstation_locked():
+            logger.info("Verified lock request but the PC is already locked")
+            return "verified", "already_locked"
+        try:
+            unlock.lock_workstation()
+            logger.info("Locked the workstation for request")
+        except unlock.UnlockError as exc:
+            logger.warning("Could not lock the workstation: %s", exc)
+            return "rejected", "lock_failed"
+        return "verified", None
 
 
     def _ack(self, request_id: str, *, status: str, reason_code: str | None = None) -> None:

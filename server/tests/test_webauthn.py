@@ -71,6 +71,25 @@ def test_end_to_end_authorization_request(client: TestClient) -> None:
     assert body["operation"] == "remote_unlock"
 
 
+def test_end_to_end_lock_request(client: TestClient) -> None:
+    token = register_account(client)
+    authenticator = register_passkey(client, token)
+    device_id, _key, _fp = enroll_and_pair(client, token)
+    response = create_auth_request(client, token, device_id, authenticator, operation="remote_lock")
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["operation"] == "remote_lock"
+
+
+def test_rejects_unknown_operation(client: TestClient) -> None:
+    token = register_account(client)
+    authenticator = register_passkey(client, token)
+    device_id, _key, _fp = enroll_and_pair(client, token)
+    response = create_auth_request(client, token, device_id, authenticator, operation="format_disk")
+    assert response.status_code == 422
+
+
 def test_authorization_tampered_signature(client: TestClient) -> None:
     token = register_account(client)
     authenticator = register_passkey(client, token)

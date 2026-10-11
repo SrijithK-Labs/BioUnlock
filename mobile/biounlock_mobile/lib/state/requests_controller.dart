@@ -71,7 +71,10 @@ class RequestsController extends ChangeNotifier {
   }
 
   /// Full flow: challenge -> passkey assertion -> create request -> poll.
-  Future<AuthorizationOutcome> authorize({required String pcId}) async {
+  Future<AuthorizationOutcome> authorize({
+    required String pcId,
+    String operation = 'remote_unlock',
+  }) async {
     _busy = true;
     _error = null;
     _current = null;
@@ -91,6 +94,7 @@ class RequestsController extends ChangeNotifier {
         challengeId: begin['challenge_id'] as String,
         pcId: begin['pc_id'] as String? ?? pcId,
         assertion: assertion,
+        operation: operation,
       );
       _current = created;
 
