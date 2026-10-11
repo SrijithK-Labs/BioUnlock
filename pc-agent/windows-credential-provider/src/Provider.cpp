@@ -243,8 +243,9 @@ IFACEMETHODIMP CBioUnlockProvider::GetCredentialCount(DWORD* pdwCount, DWORD* pd
     if (!pdwCount || !pdwDefault || !pbAutoLogonWithDefault) {
         return E_POINTER;
     }
-    // Only offer a credential when the phone has actually approved an unlock.
-    const bool haveTicket = _state->Snapshot().has_value();
+    // Read the ticket live so a ticket that already exists at first enumeration
+    // (before the watcher's first poll) is honoured.
+    const bool haveTicket = RefreshTicket().has_value();
     if (haveTicket && (_cpus == CPUS_UNLOCK_WORKSTATION || _cpus == CPUS_LOGON)) {
         *pdwCount = 1;
         *pdwDefault = 0;
@@ -276,6 +277,15 @@ IFACEMETHODIMP CBioUnlockProvider::GetCredentialAt(DWORD dwIndex,
 
 IFACEMETHODIMP CBioUnlockProvider::SetUserArray(ICredentialProviderUserArray* /*users*/) {
     return S_OK;
+}
+
+std::optional<TicketData> CBioUnlockProvider::RefreshTicket() {
+    auto ticket = ReadUnlockTicket();
+    {
+        std::lock_guard<std::mutex> lock(_state->mutex);
+        _state->ticket = ticket;
+    }
+    return ticket;
 }
 
 void CBioUnlockProvider::StartWatcher() {

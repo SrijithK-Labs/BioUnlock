@@ -34,6 +34,14 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 Output: `build\BioUnlockProvider.dll` (x64).
 
+## Self-test (no install, no lock)
+
+`tests\selftest.cpp` loads the built DLL, instantiates the provider through
+`DllGetClassObject`, and drives `GetCredentialCount` / `GetSerialization`. With a
+valid ticket in `%ProgramData%\BioUnlock` it reports the credential and the
+serialized buffer; without one it offers nothing. This validates the COM
+plumbing without registering anything or touching the lock screen.
+
 ## Install / uninstall (administrator)
 
 ```powershell

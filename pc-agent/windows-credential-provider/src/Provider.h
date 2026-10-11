@@ -52,6 +52,7 @@ class CBioUnlockProvider : public ICredentialProvider, public ICredentialProvide
     void StartWatcher();
     void StopWatcher();
     void WatcherLoop();
+    std::optional<TicketData> RefreshTicket();
 
     LONG _cRef;
     CREDENTIAL_PROVIDER_USAGE_SCENARIO _cpus;
