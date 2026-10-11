@@ -46,6 +46,24 @@ PAIRING_TIMEOUT_SECONDS = 300.0
 _instance_mutex: object | None = None
 
 
+def render_qr_image(payload: str) -> Image.Image | None:
+    """Render *payload* to a grayscale PIL image, or ``None`` if unavailable.
+
+    Returns ``None`` when segno is not installed; raises if rendering itself
+    fails. Kept separate from the widget code so it can be tested directly.
+    """
+    try:
+        import segno
+    except Exception:  # noqa: BLE001 - QR is optional
+        return None
+    buffer = io.BytesIO()
+    segno.make(payload, error="m").save(buffer, kind="png", scale=4)
+    buffer.seek(0)
+    image = Image.open(buffer).convert("L")
+    image.load()
+    return image
+
+
 def _acquire_single_instance() -> bool:
     """Allow only one tray (and therefore one agent) per login session.
 
@@ -492,15 +510,16 @@ class TrayApp:
         if self._qr_label is None:
             return
         try:
-            import segno
-        except Exception:  # noqa: BLE001 - QR is optional
+            image = render_qr_image(payload)
+        except Exception:  # noqa: BLE001
+            self._qr_label.configure(text="(Could not render QR code.)")
+            return
+        if image is None:
             self._qr_label.configure(text="(Install 'segno' to show a QR code.)")
             return
         try:
-            data = segno.make(payload, error="m").png_data(scale=4)
-            image = Image.open(io.BytesIO(data))
             self._photo = ImageTk.PhotoImage(image)
-            self._qr_label.configure(image=self._photo)
+            self._qr_label.configure(image=self._photo, text="")
         except Exception:  # noqa: BLE001
             self._qr_label.configure(text="(Could not render QR code.)")
 
