@@ -160,11 +160,12 @@ def test_status_reports_unenrolled(home, api_factory, replay_store):
 
 
 @pytest.mark.skipif(not unlock.dpapi_available(), reason="Windows DPAPI is not available")
-def test_verified_unlock_issues_ticket(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint):
+def test_verified_unlock_issues_ticket(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint, monkeypatch):
     agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
     unlock.save_windows_credential(
         home, unlock.WindowsCredential(username="user", password="secret", domain="PC")
     )
+    monkeypatch.setattr(unlock, "is_workstation_locked", lambda: True)
     envelope = build_envelope(server_key, pc_id="pc-1")
 
     outcome = agent.handle_envelope(envelope)
@@ -175,6 +176,20 @@ def test_verified_unlock_issues_ticket(home, fake_api, api_factory, replay_store
     assert ticket["request_id"] == "req-1"
     assert ticket["username"] == "user"
     assert ticket["password"] == "secret"
+
+
+@pytest.mark.skipif(not unlock.dpapi_available(), reason="Windows DPAPI is not available")
+def test_verified_unlock_when_already_unlocked_skips_ticket(home, fake_api, api_factory, replay_store, server_key, server_pub_pem, server_fingerprint, monkeypatch):
+    agent = _paired_agent(home, api_factory, replay_store, server_pub_pem, server_fingerprint)
+    credential = unlock.WindowsCredential(username="user", password="secret", domain="PC")
+    unlock.save_windows_credential(home, credential)
+    unlock.issue_unlock_ticket(home, request_id="stale", credential=credential)
+    monkeypatch.setattr(unlock, "is_workstation_locked", lambda: False)
+
+    outcome = agent.handle_envelope(build_envelope(server_key, pc_id="pc-1"))
+
+    assert outcome.outcome == "verified"
+    assert unlock.read_unlock_ticket(home) is None
 
 
 @pytest.mark.skipif(not unlock.dpapi_available(), reason="Windows DPAPI is not available")

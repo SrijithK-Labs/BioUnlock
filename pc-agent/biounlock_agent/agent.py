@@ -247,6 +247,16 @@ class Agent:
         if verified.operation != "remote_unlock":
             return
         home = self.config_store.home
+        if not unlock.is_workstation_locked():
+            # The PC is already unlocked, so there is nothing to unlock. A ticket
+            # issued now would linger and silently auto-unlock the next time the
+            # user locks the workstation, so drop any stale ticket instead.
+            unlock.clear_unlock_ticket(self.unlock_dir)
+            logger.info(
+                "Verified unlock %s but the PC is already unlocked; no ticket issued",
+                verified.request_id,
+            )
+            return
         try:
             if not unlock.has_windows_credential(home):
                 logger.warning(

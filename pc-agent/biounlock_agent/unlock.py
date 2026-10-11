@@ -95,6 +95,34 @@ def dpapi_available() -> bool:
     return True
 
 
+def is_workstation_locked() -> bool:
+    """Return True while the Windows logon/lock UI (``LogonUI.exe``) is running.
+
+    ``LogonUI.exe`` only runs while the workstation is locked or sitting at the
+    sign-in screen, so its presence reliably means the user is not signed in.
+    ``OpenInputDesktop`` is *not* used because it keeps reporting the ``Default``
+    desktop while locked on some machines. If the state cannot be determined this
+    returns ``True`` so callers keep the conservative behaviour of still issuing
+    a ticket (never breaking a legitimate unlock).
+    """
+    if os.name != "nt":
+        return False
+    try:
+        import subprocess  # noqa: PLC0415
+
+        result = subprocess.run(
+            ["tasklist", "/fi", "imagename eq LogonUI.exe", "/nh"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:  # noqa: BLE001 - never let a probe failure break unlocking
+        return True
+    return "logonui.exe" in result.stdout.lower()
+
+
 def _protect(blob: bytes, *, machine: bool) -> bytes:
     win32crypt = _win32crypt()
     flags = _CRYPTPROTECT_UI_FORBIDDEN | (_CRYPTPROTECT_LOCAL_MACHINE if machine else 0)
