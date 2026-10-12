@@ -25,9 +25,6 @@ ENV_MACHINE_SECRETS = "BIOUNLOCK_AGENT_MACHINE_SECRETS"
 CONFIG_FILENAME = "config.json"
 REPLAY_FILENAME = "replay.sqlite3"
 DEVICE_KEY_NAME = "device_key"
-# Marker written by the service installer. Its presence means the agent is
-# installed machine-wide (a boot-start service and the tray both use the shared
-# %ProgramData%\BioUnlock home and DPAPI machine-scope secrets).
 SERVICE_MARKER = "service.json"
 
 
@@ -37,28 +34,20 @@ def _env_truthy(name: str) -> bool:
 
 
 def service_mode() -> bool:
-    """Whether the agent is installed machine-wide (boot-start service).
-
-    True when ``BIOUNLOCK_AGENT_MACHINE_SECRETS`` is set, or when the installer's
-    marker file is present next to the shared home. In this mode the config,
-    device key, replay database and Windows credential all live under
-    ``%ProgramData%\\BioUnlock`` and secrets use DPAPI *machine* scope so a
-    SYSTEM-run service can read them before anyone logs in.
-    """
+    """Whether the agent is installed machine-wide by the service installer."""
     if _env_truthy(ENV_MACHINE_SECRETS):
         return True
     try:
         return (default_shared_home() / SERVICE_MARKER).exists()
-    except OSError:  # pragma: no cover - defensive
+    except OSError:
         return False
 
 
 def default_home() -> Path:
-    """Resolve the agent home directory.
+    """Resolve the agent home directory, honoring ``BIOUNLOCK_AGENT_HOME``.
 
-    Honors ``BIOUNLOCK_AGENT_HOME`` first, then the shared machine home when the
-    agent is installed as a service (see :func:`service_mode`); otherwise the
-    per-user ``%LOCALAPPDATA%\\BioUnlock`` on Windows.
+    When the boot-start service is installed this is the shared machine home so
+    the service and the tray read the same config and secrets.
     """
     override = os.environ.get(ENV_HOME)
     if override:

@@ -71,14 +71,10 @@ class FileSecretStore:
 
 
 class DpapiSecretStore:
-    """Windows DPAPI-protected secret store.
+    """Windows DPAPI-protected secret store (requires pywin32).
 
-    Requires ``pywin32``. Blobs are protected with ``CryptProtectData``. By
-    default this is *current-user* scope (only the same Windows user on the same
-    machine can decrypt). When ``machine=True`` the blob uses *machine* scope so
-    a SYSTEM-run Windows service can decrypt the device key before anyone logs
-    in; that widens who can decrypt it to any process on the machine, which is
-    necessary for pre-login unlocking.
+    Current-user scope by default. ``machine=True`` uses machine scope so a
+    SYSTEM-run service can decrypt the device key before anyone logs in.
     """
 
     def __init__(self, base_dir: Path, *, machine: bool = False) -> None:
@@ -129,8 +125,8 @@ def dpapi_available() -> bool:
 def default_secret_store(base_dir: Path, *, machine: bool | None = None) -> SecretStore:
     """Return DPAPI storage on Windows, otherwise a plaintext fallback.
 
-    When *machine* is ``None`` it follows :func:`biounlock_agent.config.service_mode`
-    so an installed service transparently switches to machine-scope secrets.
+    ``machine`` defaults to the service mode, so an installed service
+    transparently switches to machine-scope secrets.
     """
     if machine is None:
         from biounlock_agent.config import service_mode

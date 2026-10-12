@@ -228,9 +228,8 @@ def save_windows_credential(
 ) -> Path:
     """DPAPI-protect and persist a Windows credential.
 
-    Uses *current-user* scope by default. When *machine* is ``None`` it follows
-    :func:`biounlock_agent.config.service_mode`, because a SYSTEM-run service
-    cannot unprotect a current-user blob and needs machine scope instead.
+    Uses current-user scope by default; when ``machine`` is ``None`` this follows
+    the service mode, since a SYSTEM-run service can't read a user-scope blob.
     """
     if not credential.username:
         raise UnlockError("username must not be empty")
