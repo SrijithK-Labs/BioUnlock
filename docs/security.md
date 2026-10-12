@@ -31,6 +31,14 @@ instead of exposing the API. Generate one with
 value in the app's setup screen and in the PC agent (the Link dialog, or
 `--token` / `BIOUNLOCK_AGENT_TOKEN`).
 
+## PC agent authentication
+
+The PC agent signs each request with its Ed25519 device credential. Signature
+failures return a single generic `401` regardless of the reason — whether the
+device id is unknown, revoked, expired, or simply mis-signed — so the API cannot
+be used to probe which device ids exist. A device must be paired and active to
+use the endpoints and open the agent WebSocket.
+
 ## Transport
 
 - Production traffic is HTTPS-only. Certificate verification is **never**
