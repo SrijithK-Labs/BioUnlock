@@ -40,8 +40,8 @@ background agent. It starts automatically at login.
    ```powershell
    powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource
    ```
-3. Click the tray icon, enter your backend URL, then **Link this PC** and scan
-   the QR code with the phone app.
+3. Click the tray icon, enter your backend URL and API token, then **Link this
+   PC** and scan the QR code with the phone app.
 4. To unlock the actual Windows logon screen you also need the Credential
    Provider (below) and a stored Windows credential (**Set Windows password…**
    in the tray menu, or `python -m biounlock_agent set-credential`).
@@ -77,9 +77,9 @@ phone app and this Windows app at that URL. See
 [`../docs/deploy-vercel.md`](../docs/deploy-vercel.md) for the environment
 variables to set on the host (so no secrets ever live in the repo).
 
-> **Security note:** anyone who knows your backend URL can attempt to register a
-> passkey and link a PC. Keep the URL private, or put it behind an access
-> control you trust. There is no account system by design.
+> **Security note:** registering a passkey and linking a PC both require your
+> backend's `BIO_API_TOKEN`, so a stranger who learns the URL still cannot add a
+> device or sign in. Keep the URL and the token private.
 
 ## Credential Provider (logon-screen unlock)
 
@@ -99,7 +99,7 @@ DLL has already been built.
 
 ```powershell
 python -m biounlock_agent tray             # system tray app (default with no args)
-python -m biounlock_agent enroll --server-url https://unlock.example.com --name "Workstation"
+python -m biounlock_agent enroll --server-url https://unlock.example.com --token <api-token> --name "Workstation"
 python -m biounlock_agent run              # foreground agent
 python -m biounlock_agent status           # local status as JSON
 python -m biounlock_agent set-credential   # store the DPAPI-protected Windows credential

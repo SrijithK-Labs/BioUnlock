@@ -19,15 +19,17 @@ Initial-release security notes. See also `threat-model.md` and `protocol.md`.
 Every owner endpoint — passkey registration and management, device
 listing/revocation, pairing confirmation, security events, and authorization
 requests — requires the shared secret `BIO_API_TOKEN`, sent as
-`Authorization: Bearer <token>`. The
-mobile app stores it in platform-secure storage and sends it on every call; the
-PC agent does not need it because it authenticates with its own signed device
-credential. If the token is unset the API stays open, which is only tolerated
-outside production: a production deploy without `BIO_API_TOKEN` refuses owner
-endpoints so a misconfiguration fails closed instead of exposing the API.
-Generate one with
+`Authorization: Bearer <token>`. PC enrollment is gated the same way, so only
+someone who knows the deployment secret can add a device. The mobile app stores
+the token in platform-secure storage and sends it on every call; the PC agent
+uses it only for the one-time `enroll` request and afterwards authenticates with
+its own signed device credential. If the token is unset the API stays open,
+which is only tolerated outside production: a production deploy without
+`BIO_API_TOKEN` refuses owner endpoints so a misconfiguration fails closed
+instead of exposing the API. Generate one with
 `python -c "import secrets; print(secrets.token_urlsafe(32))"` and set the same
-value in the app's setup screen.
+value in the app's setup screen and in the PC agent (the Link dialog, or
+`--token` / `BIOUNLOCK_AGENT_TOKEN`).
 
 ## Transport
 

@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from tests.conftest import enroll_and_pair, enroll_device, register_passkey
+from tests.support.helpers import new_device_keypair
 
 TOKEN = "test-api-token-1234"
 
@@ -55,10 +56,14 @@ def test_pairing_confirm_requires_token(client: TestClient, settings: Settings) 
     assert confirmed.json()["device"]["status"] == "active"
 
 
-def test_device_enrollment_is_not_gated(client: TestClient, settings: Settings) -> None:
+def test_device_enrollment_requires_token(client: TestClient, settings: Settings) -> None:
     settings.api_token = TOKEN
-    data = enroll_device(client)
-    assert data["device_id"]
+    _private_key, public_pem = new_device_keypair()
+    body = {"name": "Test PC", "platform": "windows", "public_key": public_pem}
+    assert client.post("/api/v1/devices/enroll", json=body).status_code == 401
+    enrolled = client.post("/api/v1/devices/enroll", json=body, headers=_auth())
+    assert enrolled.status_code == 201
+    assert enrolled.json()["device_id"]
 
 
 def test_production_fails_closed_without_token(client: TestClient, settings: Settings) -> None:

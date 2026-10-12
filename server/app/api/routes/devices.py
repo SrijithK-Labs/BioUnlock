@@ -73,7 +73,10 @@ def device_to_out(device: Device, manager) -> DeviceOut:
     "/devices/enroll",
     response_model=DeviceEnrollResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(rate_limit("enroll", limit=30, window=60))],
+    dependencies=[
+        Depends(require_api_token),
+        Depends(rate_limit("enroll", limit=30, window=60)),
+    ],
 )
 def enroll_device(
     payload: DeviceEnrollRequest, request: Request, db: Session = Depends(get_db)

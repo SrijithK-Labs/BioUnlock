@@ -23,10 +23,11 @@ def client_ip(request: Request) -> str:
 def require_api_token(request: Request) -> None:
     """Guard owner endpoints with the shared API token.
 
-    Only the mobile app holds this secret; the PC agent authenticates with its
-    signed device credential instead. When no token is configured we keep the
-    API open for tests and local development, but refuse to serve in production
-    so a misconfigured deploy fails closed rather than exposing the API.
+    The mobile app sends it on every owner call, and the PC agent presents it
+    once when enrolling before it has a signed device credential of its own.
+    When no token is configured we keep the API open for tests and local
+    development, but refuse to serve in production so a misconfigured deploy
+    fails closed rather than exposing the API.
     """
     settings = request.app.state.settings
     expected = settings.api_token

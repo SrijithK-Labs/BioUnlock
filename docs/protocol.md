@@ -28,7 +28,9 @@ cannot forge envelopes for an already-paired PC.
 ## Pairing / enrollment
 
 1. Agent generates `(sk_pc, pk_pc)` locally. `sk_pc` is stored DPAPI-protected.
-2. Agent → `POST /api/v1/devices/enroll` with `pk_pc`, device metadata.
+2. Agent → `POST /api/v1/devices/enroll` with `pk_pc`, device metadata, and
+   `Authorization: Bearer <BIO_API_TOKEN>` (enrollment is owner-gated, so an
+   anonymous client cannot create devices).
    Server responds: `{ device_id, pairing_code, qr_payload, expires_at, server_signing_pk }`.
    `pairing_code` is unpredictable, single-use, TTL `pairing_ttl`, with attempt
    limits.

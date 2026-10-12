@@ -105,9 +105,10 @@ hosts (localhost / private networks); production servers must be HTTPS.
 
 Set `BIO_API_TOKEN` on the server and enter the same value in the app: it is the
 shared secret the phone sends on every owner endpoint (registration, device and
-passkey management, activity history). The PC agent authenticates with its own
-signed device credential instead. In production the API refuses owner endpoints
-when the token is unset.
+passkey management, activity history) and that the PC agent sends once when it
+enrolls. After enrollment the PC agent authenticates with its own signed device
+credential. In production the API refuses owner endpoints when the token is
+unset.
 
 ## Tests
 

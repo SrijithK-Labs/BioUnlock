@@ -3,7 +3,7 @@
 Usage::
 
     python -m biounlock_agent tray
-    python -m biounlock_agent enroll --server-url https://unlock.example.com
+    python -m biounlock_agent enroll --server-url https://unlock.example.com --token <api-token>
     python -m biounlock_agent set-credential
     python -m biounlock_agent run
     python -m biounlock_agent status
@@ -41,7 +41,7 @@ def _print_qr(payload: str) -> bool:
 def _cmd_enroll(args: argparse.Namespace) -> int:
     agent = Agent()
     try:
-        enrollment = agent.enroll(args.server_url, device_name=args.name)
+        enrollment = agent.enroll(args.server_url, device_name=args.name, api_token=args.token)
     except AgentError as exc:
         print(f"Enrollment failed: {exc}", file=sys.stderr)
         agent.close()
@@ -157,6 +157,11 @@ def build_parser() -> argparse.ArgumentParser:
     enroll = sub.add_parser("enroll", help="Enroll this PC and show a pairing code")
     enroll.add_argument("--server-url", required=True)
     enroll.add_argument("--name", default=None)
+    enroll.add_argument(
+        "--token",
+        default=None,
+        help="Server API token (or set BIOUNLOCK_AGENT_TOKEN); required to enroll",
+    )
     enroll.add_argument("--timeout", type=float, default=300.0)
     enroll.set_defaults(func=_cmd_enroll)
 

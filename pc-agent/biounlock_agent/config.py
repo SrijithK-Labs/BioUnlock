@@ -2,7 +2,8 @@
 
 Non-secret configuration lives in ``config.json`` under the agent home
 directory (``%LOCALAPPDATA%\\BioUnlock`` on Windows). Secrets (the device
-private key) are kept separate and protected by :mod:`biounlock_agent.storage`.
+private key and the server API token used for enrollment) are kept separate
+and protected by :mod:`biounlock_agent.storage`.
 """
 
 from __future__ import annotations
@@ -22,9 +23,11 @@ APP_DIR_NAME = "BioUnlock"
 ENV_HOME = "BIOUNLOCK_AGENT_HOME"
 ENV_SHARED_HOME = "BIOUNLOCK_AGENT_SHARED_HOME"
 ENV_MACHINE_SECRETS = "BIOUNLOCK_AGENT_MACHINE_SECRETS"
+ENV_API_TOKEN = "BIOUNLOCK_AGENT_TOKEN"
 CONFIG_FILENAME = "config.json"
 REPLAY_FILENAME = "replay.sqlite3"
 DEVICE_KEY_NAME = "device_key"
+API_TOKEN_NAME = "api_token"
 SERVICE_MARKER = "service.json"
 
 

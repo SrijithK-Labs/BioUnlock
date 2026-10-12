@@ -62,6 +62,30 @@ def test_enroll_sends_public_key(device_identity):
     assert enrollment.pairing_code == "ABCD-1234"
 
 
+def test_enroll_sends_api_token(device_identity):
+    captured: dict = {}
+
+    def handler(request):
+        captured["auth"] = request.headers.get("authorization")
+        return httpx.Response(
+            201,
+            json={
+                "device_id": "device-1",
+                "device_name": "PC",
+                "pairing_code": "ABCD-1234",
+                "qr_payload": "{}",
+                "expires_at": "2030-01-01T00:00:00Z",
+                "server_signing_public_key": "PEM",
+                "server_signing_key_fingerprint": "FP",
+            },
+        )
+
+    client = _client(handler, private_key=device_identity, api_token="secret-token")
+    client.enroll(name="PC")
+
+    assert captured["auth"] == "Bearer secret-token"
+
+
 def test_heartbeat_uses_signed_device_credential(device_identity):
     captured: dict = {}
 

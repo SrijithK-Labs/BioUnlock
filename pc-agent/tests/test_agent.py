@@ -11,8 +11,14 @@ import biounlock_agent.agent as agent_module
 from biounlock_agent import unlock
 from biounlock_agent.agent import Agent
 from biounlock_agent.api_client import Enrollment, Heartbeat, ServerInfo
-from biounlock_agent.config import DEVICE_KEY_NAME, AgentConfig, ConfigStore
-from biounlock_agent.errors import AgentError
+from biounlock_agent.config import (
+    API_TOKEN_NAME,
+    DEVICE_KEY_NAME,
+    ENV_API_TOKEN,
+    AgentConfig,
+    ConfigStore,
+)
+from biounlock_agent.errors import AgentError, ApiError
 
 NOW = 1500
 
@@ -71,6 +77,58 @@ def test_enroll_rejects_inconsistent_server_key(home, fake_api, api_factory, rep
     agent = _make_agent(home, api_factory, replay_store)
     with pytest.raises(AgentError):
         agent.enroll("http://server")
+
+
+def test_enroll_sends_and_stores_api_token(home, fake_api, api_factory, replay_store):
+    fake_api.server_info_value = ServerInfo("BioUnlock", "0.1.0", "example.com", "FP", "production")
+    fake_api.enroll_value = _enrollment("FP")
+
+    agent = _make_agent(home, api_factory, replay_store)
+    agent.enroll("http://server/", api_token="secret-token")
+
+    assert fake_api.kwargs["api_token"] == "secret-token"
+    assert agent.secret_store.get(API_TOKEN_NAME) == b"secret-token"
+
+
+def test_enroll_uses_env_token(home, fake_api, api_factory, replay_store, monkeypatch):
+    monkeypatch.setenv(ENV_API_TOKEN, "env-token")
+    fake_api.server_info_value = ServerInfo("BioUnlock", "0.1.0", "example.com", "FP", "production")
+    fake_api.enroll_value = _enrollment("FP")
+
+    agent = _make_agent(home, api_factory, replay_store)
+    agent.enroll("http://server/")
+
+    assert fake_api.kwargs["api_token"] == "env-token"
+
+
+def test_enroll_uses_stored_token(home, fake_api, api_factory, replay_store):
+    fake_api.server_info_value = ServerInfo("BioUnlock", "0.1.0", "example.com", "FP", "production")
+    fake_api.enroll_value = _enrollment("FP")
+
+    agent = _make_agent(home, api_factory, replay_store)
+    agent.secret_store.set(API_TOKEN_NAME, b"stored-token")
+    agent.enroll("http://server/")
+
+    assert fake_api.kwargs["api_token"] == "stored-token"
+
+
+def test_enroll_reports_missing_token_hint(home, api_factory, replay_store):
+    class RejectingApi:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def server_info(self) -> ServerInfo:
+            return ServerInfo("BioUnlock", "0.1.0", "example.com", "FP", "production")
+
+        def enroll(self, *, name: str, platform: str = "windows") -> Enrollment:
+            raise ApiError("A valid API token is required.", code="unauthorized", status_code=401)
+
+        def close(self) -> None:
+            pass
+
+    agent = _make_agent(home, lambda **kwargs: RejectingApi(**kwargs), replay_store)
+    with pytest.raises(AgentError, match="API token"):
+        agent.enroll("http://server/")
 
 
 def test_enroll_preserves_pairing_when_relinking_same_server(home, fake_api, api_factory, replay_store):

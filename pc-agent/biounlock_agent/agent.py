@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,7 +20,9 @@ from pathlib import Path
 from biounlock_agent import unlock
 from biounlock_agent.api_client import ApiClient, Enrollment, Heartbeat
 from biounlock_agent.config import (
+    API_TOKEN_NAME,
     DEVICE_KEY_NAME,
+    ENV_API_TOKEN,
     REPLAY_FILENAME,
     AgentConfig,
     ConfigStore,
@@ -133,22 +136,58 @@ class Agent:
 
     # --- enrollment / pairing -----------------------------------------
 
-    def enroll(self, server_url: str, *, device_name: str | None = None) -> Enrollment:
+    def _resolve_api_token(self, explicit: str | None = None) -> str | None:
+        """Resolve the server API token: argument, then env var, then stored."""
+        if explicit and explicit.strip():
+            return explicit.strip()
+        env = os.environ.get(ENV_API_TOKEN, "").strip()
+        if env:
+            return env
+        raw = self.secret_store.get(API_TOKEN_NAME)
+        if raw is None:
+            return None
+        try:
+            stored = raw.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            return None
+        return stored or None
+
+    def enroll(
+        self,
+        server_url: str,
+        *,
+        device_name: str | None = None,
+        api_token: str | None = None,
+    ) -> Enrollment:
         """Enroll this PC and pin the server signing key (trust on first use).
 
         The existing configuration is only replaced after the server responds,
         and a re-link to the same server for the same device keeps the current
-        pairing rather than dropping it. Nothing is deleted on failure.
+        pairing rather than dropping it. Nothing is deleted on failure. The
+        server's shared API token is required to enroll; it is taken from the
+        argument, ``BIOUNLOCK_AGENT_TOKEN`` or the stored secret, and saved for
+        future re-links.
         """
         previous = self.config
         identity = self.load_or_create_identity()
+        token = self._resolve_api_token(api_token)
         name = (device_name or previous.device_name or default_device_name()).strip() or default_device_name()
-        client = self._api_factory(server_url=server_url, private_key=identity)
+        client = self._api_factory(server_url=server_url, private_key=identity, api_token=token)
         try:
             info = client.server_info()
             enrollment = client.enroll(name=name, platform=previous.platform)
+        except ApiError as exc:
+            if exc.status_code == 401:
+                raise AgentError(
+                    "Enrollment was rejected. Provide the server's API token with "
+                    "--token or the BIOUNLOCK_AGENT_TOKEN environment variable."
+                ) from exc
+            raise
         finally:
             client.close()
+
+        if token:
+            self.secret_store.set(API_TOKEN_NAME, token.encode("utf-8"))
 
         if info.server_signing_key_fingerprint != enrollment.server_signing_key_fingerprint:
             raise AgentError(

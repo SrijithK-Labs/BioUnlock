@@ -57,6 +57,7 @@ class ApiClient:
         private_key: Ed25519PrivateKey | None = None,
         device_id: str | None = None,
         server_fingerprint: str | None = None,
+        api_token: str | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         transport: httpx.BaseTransport | None = None,
         verify: bool = True,
@@ -66,6 +67,7 @@ class ApiClient:
         self._private_key = private_key
         self._device_id = device_id
         self._server_fingerprint = server_fingerprint
+        self._api_token = api_token
         self._clock = clock
         self._client = httpx.Client(
             base_url=self.server_url + API_PREFIX,
@@ -144,7 +146,13 @@ class ApiClient:
         auth: bool = False,
         json: dict[str, Any] | None = None,
     ) -> httpx.Response:
-        headers = self._device_auth_header() if auth else {}
+        headers: dict[str, str] = {}
+        if auth:
+            headers = self._device_auth_header()
+        elif self._api_token:
+            # Enrollment (the only non-device call that needs credentials) is
+            # guarded by the server's shared API token.
+            headers = {"Authorization": f"Bearer {self._api_token}"}
         try:
             response = self._client.request(method, path, json=json, headers=headers)
         except httpx.HTTPError as exc:

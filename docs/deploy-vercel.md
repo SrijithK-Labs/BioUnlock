@@ -51,7 +51,7 @@ does the rest — no other env vars are needed:
 | `BIO_ALLOWED_ORIGINS` | optional | Extra origins; the current host and the Android app origin are added automatically |
 | `BIO_ENVIRONMENT` | optional | Auto-set from Vercel's `VERCEL_ENV` (keeps `/docs` private in production) |
 | `BIO_SECRET_KEY` | recommended | Not a root of trust, but must not be the default |
-| `BIO_API_TOKEN` | recommended | Shared bearer secret the mobile app sends on all owner endpoints; **required** in production (owner endpoints refuse to serve without it) |
+| `BIO_API_TOKEN` | recommended | Shared bearer secret the mobile app sends on all owner endpoints and the PC agent sends when enrolling; **required** in production (owner endpoints refuse to serve without it) |
 | `BIO_CORS_ORIGINS` | optional | Browser tooling only |
 | `BIO_COOKIE_SECURE` | optional | `true` behind HTTPS |
 

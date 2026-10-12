@@ -477,10 +477,13 @@ class TrayApp:
 
         self._url_var = tk.StringVar(value=self.agent.config.server_url or "")
         self._name_var = tk.StringVar(value=self.agent.config.device_name or "")
+        self._token_var = tk.StringVar()
         ttk.Label(frame, text="Server URL").pack(anchor="w")
         ttk.Entry(frame, textvariable=self._url_var).pack(fill="x", pady=(0, 8))
         ttk.Label(frame, text="PC name").pack(anchor="w")
-        ttk.Entry(frame, textvariable=self._name_var).pack(fill="x", pady=(0, 12))
+        ttk.Entry(frame, textvariable=self._name_var).pack(fill="x", pady=(0, 8))
+        ttk.Label(frame, text="API token").pack(anchor="w")
+        ttk.Entry(frame, textvariable=self._token_var, show="\u2022").pack(fill="x", pady=(0, 12))
 
         self._link_button = ttk.Button(frame, text="Link this PC", command=self._on_link)
         self._link_button.pack(fill="x")
@@ -549,6 +552,7 @@ class TrayApp:
     def _on_link(self) -> None:
         url = (self._url_var.get() if self._url_var else "").strip()
         name = (self._name_var.get() if self._name_var else "").strip()
+        token = (self._token_var.get() if self._token_var else "").strip()
         if not url:
             self._set_status("Enter the server URL first.")
             return
@@ -557,11 +561,11 @@ class TrayApp:
         if self._link_button is not None:
             self._link_button.config(state="disabled")
         self._set_status("Linking\u2026")
-        threading.Thread(target=self._enroll_worker, args=(url, name), daemon=True).start()
+        threading.Thread(target=self._enroll_worker, args=(url, name, token), daemon=True).start()
 
-    def _enroll_worker(self, url: str, name: str) -> None:
+    def _enroll_worker(self, url: str, name: str, token: str) -> None:
         try:
-            enrollment = self.agent.enroll(url, device_name=name or None)
+            enrollment = self.agent.enroll(url, device_name=name or None, api_token=token or None)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.post(lambda error=str(exc): self._on_link_failed(error))
             return
