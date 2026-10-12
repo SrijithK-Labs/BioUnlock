@@ -18,11 +18,11 @@ secret you have to set is `BIO_API_TOKEN`.**
 2. Set the project's **Root Directory** to `server`. Vercel detects the FastAPI
    app through `[tool.vercel] entrypoint = "app.main:app"` in `pyproject.toml`
    and installs dependencies with `uv` — no build command needed.
-3. Open the **Storage** tab → **Marketplace → Neon (Postgres)** and create a
-   database, then **connect** it to this project. Vercel injects the connection
-   string (often store-prefixed, e.g. `biounlockdb_DATABASE_URL`); the app
-   detects it automatically, so you do **not** set a database URL by hand.
-4. Add one **Environment Variable**:
+3. **Connect a database.** In the **Storage** tab, connect a Postgres database
+   to this project. Vercel injects the connection string (often store-prefixed,
+   e.g. `biounlockdb_DATABASE_URL`); the app detects it automatically, so you do
+   **not** set a database URL by hand.
+4. **Add the API key.** Add one **Environment Variable**:
 
    | Name | Value |
    | --- | --- |

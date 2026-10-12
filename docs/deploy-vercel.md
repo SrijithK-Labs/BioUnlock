@@ -44,7 +44,7 @@ does the rest — no other env vars are needed:
 
 | Variable | Required? | Notes |
 | --- | --- | --- |
-| *(Postgres integration)* | **yes** | Storage → Marketplace → **Postgres (Neon)**; the connection string is auto-detected (see caveat 1) |
+| *(Postgres integration)* | **yes** | In the **Storage** tab, connect a Postgres database; the connection string is auto-detected (see caveat 1) |
 | `BIO_DATABASE_URL` | optional | Override the auto-detected database URL |
 | `BIO_SIGNING_KEY` | optional | The server key is generated and stored in the database by default (see caveat 2) |
 | `BIO_RP_ID` | optional | Defaults to `auto`: derived from the request host |
@@ -59,11 +59,11 @@ does the rest — no other env vars are needed:
 
 1. **SQLite does not persist on Vercel.** The filesystem is ephemeral, so the
    default `sqlite:///./biounlock.db` loses every device and pairing on each
-   deploy. In the project's **Storage** tab create a **Postgres** database
-   (Marketplace → Neon) and connect it; Vercel injects `DATABASE_URL` /
-   `POSTGRES_URL` (often store-prefixed, e.g. `biounlockdb_DATABASE_URL`), which
-   the app adopts automatically (and rewrites to the `psycopg` driver, preferring
-   the pooled URL). If you prefer, set `BIO_DATABASE_URL` yourself instead.
+   deploy. In the project's **Storage** tab, connect a **Postgres** database;
+   Vercel injects `DATABASE_URL` / `POSTGRES_URL` (often store-prefixed, e.g.
+   `biounlockdb_DATABASE_URL`), which the app adopts automatically (and rewrites
+   to the `psycopg` driver, preferring the pooled URL). If you prefer, set
+   `BIO_DATABASE_URL` yourself instead.
    Then run migrations once against that database from your machine:
 
    ```powershell

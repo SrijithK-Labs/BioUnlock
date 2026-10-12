@@ -19,9 +19,9 @@ AUTO_RP_ID = "auto"
 DEFAULT_ENVIRONMENT = "development"
 DEFAULT_DATABASE_URL = "sqlite:///./biounlock.db"
 
-# Connection strings injected by hosted Postgres integrations (e.g. Vercel +
-# Neon). Used only when BIO_DATABASE_URL is not set. Pooled URLs come first
-# because they suit serverless better; direct URLs are the fallback.
+# Connection strings injected by hosted Postgres integrations (e.g. a database
+# connected in Vercel). Used only when BIO_DATABASE_URL is not set. Pooled URLs
+# come first because they suit serverless better; direct URLs are the fallback.
 _DATABASE_URL_ENV_FALLBACKS = (
     "DATABASE_URL",
     "POSTGRES_URL",

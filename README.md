@@ -69,8 +69,8 @@ database, the signing key, and the WebAuthn relying-party domain — is detected
 automatically.
 
 **Vercel (recommended, serverless):** import this repo, set the project's **Root
-Directory** to `server`, add a **Postgres** database (Storage → Marketplace →
-Neon), and set one environment variable:
+Directory** to `server`, **connect a database** (Storage tab), and add one
+environment variable for the API key:
 
 ```
 BIO_API_TOKEN = <your-secret>
