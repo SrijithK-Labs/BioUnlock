@@ -51,7 +51,7 @@ void main() {
     expect(devices.first.name, 'Workstation');
   });
 
-  test('sends no Authorization header on any request', () async {
+  test('omits Authorization when no token is configured', () async {
     final seenHeaders = <String?>[];
     final client = ApiClient(
       baseUrl: 'https://example.com',
@@ -64,6 +64,22 @@ void main() {
     );
     await client.listDevices();
     expect(seenHeaders, [null]);
+  });
+
+  test('sends the API token as a Bearer header', () async {
+    final seenHeaders = <String?>[];
+    final client = ApiClient(
+      baseUrl: 'https://example.com',
+      apiToken: 'secret-token',
+      httpClient: routedClient({
+        'GET /api/v1/devices': (request) {
+          seenHeaders.add(request.headers['Authorization']);
+          return ok([deviceJson()]);
+        },
+      }),
+    );
+    await client.listDevices();
+    expect(seenHeaders, ['Bearer secret-token']);
   });
 
   test('enrollDevice posts name, platform and public key', () async {

@@ -9,14 +9,16 @@ import 'api_exception.dart';
 
 /// Thin, typed wrapper around the BioUnlock REST API.
 ///
-/// The base URL is supplied by the user at setup time (each deployment is
-/// self-hosted) and never hardcoded. The phone-facing endpoints require no
-/// authentication, so no credentials or authorization headers are sent.
+/// The base URL and the shared API token are supplied by the user at setup time
+/// (each deployment is self-hosted) and never hardcoded. Owner endpoints expect
+/// the token as ``Authorization: Bearer <token>``; the PC agent authenticates
+/// separately, so a missing token simply omits the header.
 class ApiClient {
-  ApiClient({required this.baseUrl, http.Client? httpClient})
+  ApiClient({required this.baseUrl, this.apiToken, http.Client? httpClient})
     : _http = httpClient ?? http.Client();
 
   final String baseUrl;
+  final String? apiToken;
   final http.Client _http;
 
   Uri _uri(String path) {
@@ -31,6 +33,9 @@ class ApiClient {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     };
+    if (apiToken != null && apiToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $apiToken';
+    }
     if (extra != null) {
       headers.addAll(extra);
     }

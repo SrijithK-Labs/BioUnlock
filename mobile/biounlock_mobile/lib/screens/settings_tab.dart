@@ -73,6 +73,16 @@ class SettingsTab extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.vpn_key_outlined),
+                  title: const Text('API token'),
+                  subtitle: Text(
+                    (state.apiToken ?? '').isEmpty ? 'Not set' : '••••••••',
+                  ),
+                  trailing: const Icon(Icons.edit_outlined),
+                  onTap: () => _confirmChangeServer(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.swap_horiz),
                   title: const Text('Change server'),
                   subtitle: const Text('Enter a new API base URL'),
@@ -119,20 +129,38 @@ class SettingsTab extends StatelessWidget {
     BuildContext context, {
     String? prefill,
   }) async {
-    final controller = TextEditingController(text: prefill ?? '');
-    final save = await showDialog<String>(
+    final urlController = TextEditingController(text: prefill ?? '');
+    final tokenController = TextEditingController(
+      text: context.read<AppState>().apiToken ?? '',
+    );
+    final save = await showDialog<(String, String)>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Server URL'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          autocorrect: false,
-          decoration: const InputDecoration(
-            hintText: 'http://192.168.1.10:8000',
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
+        title: const Text('Server settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: urlController,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Server URL',
+                hintText: 'http://192.168.1.10:8000',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: tokenController,
+              autocorrect: false,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'API token',
+                helperText: 'Set as BIO_API_TOKEN on your server',
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -140,14 +168,19 @@ class SettingsTab extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
+            onPressed: () => Navigator.of(
+              context,
+            ).pop((urlController.text, tokenController.text)),
             child: const Text('Save'),
           ),
         ],
       ),
     );
     if (save == null || !context.mounted) return;
-    final ok = await context.read<AppState>().configureServer(save);
+    final ok = await context.read<AppState>().configureServer(
+      save.$1,
+      token: save.$2,
+    );
     if (!context.mounted) return;
     if (ok) {
       ScaffoldMessenger.of(

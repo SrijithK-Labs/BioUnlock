@@ -16,16 +16,21 @@ class _SetupScreenState extends State<SetupScreen> {
   late final TextEditingController _controller = TextEditingController(
     text: AppConfig.defaultServerUrl,
   );
+  final TextEditingController _tokenController = TextEditingController();
 
   @override
   void dispose() {
     _controller.dispose();
+    _tokenController.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final state = context.read<AppState>();
-    final ok = await state.configureServer(_controller.text);
+    final ok = await state.configureServer(
+      _controller.text,
+      token: _tokenController.text,
+    );
     if (!mounted) return;
     if (ok) {
       ScaffoldMessenger.of(
@@ -76,6 +81,17 @@ class _SetupScreenState extends State<SetupScreen> {
               decoration: const InputDecoration(
                 labelText: 'Server URL',
                 hintText: 'http://192.168.1.10:8000',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _tokenController,
+              autocorrect: false,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'API token',
+                helperText: 'Set as BIO_API_TOKEN on your server',
                 border: OutlineInputBorder(),
               ),
             ),

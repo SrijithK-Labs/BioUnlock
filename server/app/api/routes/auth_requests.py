@@ -13,6 +13,7 @@ from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 from app.api.deps import (
     client_ip,
     require_active_device,
+    require_api_token,
 )
 from app.core.rate_limit import rate_limit
 from app.core.rp import allowed_origins_for, resolve_rp_id
@@ -76,7 +77,10 @@ def _request_out(db: Session, request: AuthRequest) -> AuthRequestOut:
 @router.post(
     "/auth/challenges",
     response_model=AuthenticationBeginResponse,
-    dependencies=[Depends(rate_limit("challenge", limit=30, window=60))],
+    dependencies=[
+        Depends(rate_limit("challenge", limit=30, window=60)),
+        Depends(require_api_token),
+    ],
 )
 def create_challenge(
     payload: AuthenticationBeginRequest,
@@ -125,7 +129,10 @@ def create_challenge(
     "/auth/requests",
     response_model=AuthRequestOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(rate_limit("auth_request", limit=30, window=60))],
+    dependencies=[
+        Depends(rate_limit("auth_request", limit=30, window=60)),
+        Depends(require_api_token),
+    ],
 )
 async def create_auth_request(
     payload: AuthenticationCompleteRequest,
@@ -222,7 +229,7 @@ async def create_auth_request(
     return _request_out(db, auth_request)
 
 
-@router.get("/requests", response_model=list[AuthRequestOut])
+@router.get("/requests", response_model=list[AuthRequestOut], dependencies=[Depends(require_api_token)])
 def list_requests(
     limit: int = 50,
     days: int = 30,
@@ -240,7 +247,11 @@ def list_requests(
     return [_request_out(db, r) for r in rows]
 
 
-@router.get("/requests/{request_id}", response_model=AuthRequestOut)
+@router.get(
+    "/requests/{request_id}",
+    response_model=AuthRequestOut,
+    dependencies=[Depends(require_api_token)],
+)
 def get_request(
     request_id: str,
     db: Session = Depends(get_db),

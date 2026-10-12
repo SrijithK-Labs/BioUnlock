@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import client_ip, get_current_device, require_active_device
+from app.api.deps import (
+    client_ip,
+    get_current_device,
+    require_active_device,
+    require_api_token,
+)
 from app.core.rate_limit import rate_limit
 from app.core.security import load_public_key_from_pem
 from app.core.time import as_utc
@@ -138,7 +143,7 @@ def enroll_device(
     )
 
 
-@router.get("/devices", response_model=list[DeviceOut])
+@router.get("/devices", response_model=list[DeviceOut], dependencies=[Depends(require_api_token)])
 def list_devices(
     request: Request,
     db: Session = Depends(get_db),
@@ -155,7 +160,7 @@ def device_me(request: Request, device: Device = Depends(get_current_device)) ->
     return device_to_out(device, request.app.state.connection_manager)
 
 
-@router.get("/devices/{device_id}", response_model=DeviceOut)
+@router.get("/devices/{device_id}", response_model=DeviceOut, dependencies=[Depends(require_api_token)])
 def get_device(
     device_id: str,
     request: Request,
@@ -167,7 +172,11 @@ def get_device(
     return device_to_out(device, request.app.state.connection_manager)
 
 
-@router.post("/devices/{device_id}/revoke", response_model=MessageResponse)
+@router.post(
+    "/devices/{device_id}/revoke",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_api_token)],
+)
 async def revoke_device(
     device_id: str,
     request: Request,
@@ -190,7 +199,11 @@ async def revoke_device(
     return MessageResponse(message="Device revoked.")
 
 
-@router.delete("/devices/{device_id}", response_model=MessageResponse)
+@router.delete(
+    "/devices/{device_id}",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_api_token)],
+)
 def delete_device(
     device_id: str,
     request: Request,

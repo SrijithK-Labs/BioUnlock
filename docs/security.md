@@ -14,6 +14,20 @@ Initial-release security notes. See also `threat-model.md` and `protocol.md`.
   key is an Ed25519 key in a protected file (path configurable) or secrets
   vault; the SQLite dev DB must never be deployed publicly.
 
+## Owner API token
+
+Every owner endpoint — passkey registration and management, device
+listing/revocation, security events, and authorization requests — requires the
+shared secret `BIO_API_TOKEN`, sent as `Authorization: Bearer <token>`. The
+mobile app stores it in platform-secure storage and sends it on every call; the
+PC agent does not need it because it authenticates with its own signed device
+credential. If the token is unset the API stays open, which is only tolerated
+outside production: a production deploy without `BIO_API_TOKEN` refuses owner
+endpoints so a misconfiguration fails closed instead of exposing the API.
+Generate one with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"` and set the same
+value in the app's setup screen.
+
 ## Transport
 
 - Production traffic is HTTPS-only. Certificate verification is **never**

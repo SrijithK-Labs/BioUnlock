@@ -103,6 +103,12 @@ Both the mobile app and the Windows software let the user type in their own
 backend URL. They never hardcode a server. HTTP is only allowed for development
 hosts (localhost / private networks); production servers must be HTTPS.
 
+Set `BIO_API_TOKEN` on the server and enter the same value in the app: it is the
+shared secret the phone sends on every owner endpoint (registration, device and
+passkey management, activity history). The PC agent authenticates with its own
+signed device credential instead. In production the API refuses owner endpoints
+when the token is unset.
+
 ## Tests
 
 ```bash

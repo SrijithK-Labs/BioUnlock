@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/misc.dart';
 import '../services/api_client.dart';
 import '../services/api_exception.dart';
+import '../services/api_token_store.dart';
 import '../services/passkey_service.dart';
 import '../services/preferences_store.dart';
 import '../services/server_url_store.dart';
@@ -14,19 +15,23 @@ class AppState extends ChangeNotifier {
   AppState({
     required this.store,
     required PasskeyService passkeyService,
+    ApiTokenStore? tokenStore,
     PreferencesStore? preferences,
     http.Client? httpClient,
   }) : _passkeyService = passkeyService,
+       _tokenStore = tokenStore ?? InMemoryApiTokenStore(),
        _preferences = preferences ?? InMemoryPreferencesStore(),
        _httpClient = httpClient;
 
   final ServerUrlStore store;
   final PasskeyService _passkeyService;
+  final ApiTokenStore _tokenStore;
   final PreferencesStore _preferences;
   final http.Client? _httpClient;
 
   ApiClient? _api;
   ServerInfo? _serverInfo;
+  String? _apiToken;
   bool _busy = false;
   String? _error;
   bool _initialized = false;
@@ -36,6 +41,7 @@ class AppState extends ChangeNotifier {
   PasskeyService get passkeys => _passkeyService;
   ServerInfo? get serverInfo => _serverInfo;
   String? get serverUrl => _api?.baseUrl;
+  String? get apiToken => _apiToken;
   bool get isConfigured => _api != null;
   bool get busy => _busy;
   String? get error => _error;
@@ -57,9 +63,10 @@ class AppState extends ChangeNotifier {
   /// stays configured so the user can fix the URL from Settings.
   Future<void> init() async {
     _themeMode = _themeModeFromName(await _preferences.readThemeMode());
+    _apiToken = _cleanToken(await _tokenStore.readToken());
     final url = await store.readServerUrl();
     if (url != null && url.isNotEmpty) {
-      _api = ApiClient(baseUrl: url, httpClient: _httpClient);
+      _api = ApiClient(baseUrl: url, apiToken: _apiToken, httpClient: _httpClient);
       try {
         _serverInfo = await _api!.serverInfo();
       } on ApiException {
@@ -78,21 +85,30 @@ class AppState extends ChangeNotifier {
     await _preferences.writeThemeMode(_themeModeName(mode));
   }
 
-  /// Points the app at a (new) server and validates reachability.
-  Future<bool> configureServer(String url) async {
+  /// Points the app at a (new) server and validates reachability. When
+  /// [token] is supplied it replaces the stored API token; otherwise the
+  /// existing token is reused.
+  Future<bool> configureServer(String url, {String? token}) async {
     final normalized = _normalizeUrl(url);
     if (normalized == null) {
       _setError('Enter a valid server URL, e.g. https://biounlock.example.com');
       return false;
     }
+    final effectiveToken = token == null ? _apiToken : _cleanToken(token);
     _setBusy(true);
     _setError(null);
     try {
-      final client = ApiClient(baseUrl: normalized, httpClient: _httpClient);
+      final client = ApiClient(
+        baseUrl: normalized,
+        apiToken: effectiveToken,
+        httpClient: _httpClient,
+      );
       final info = await client.serverInfo();
       _api = client;
       _serverInfo = info;
+      _apiToken = effectiveToken;
       await store.writeServerUrl(normalized);
+      await _tokenStore.writeToken(effectiveToken ?? '');
       return true;
     } on ApiException catch (error) {
       _setError(error.message);
@@ -102,12 +118,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Forgets the configured server URL, returning to first-run setup.
+  /// Forgets the configured server URL and API token, returning to first-run
+  /// setup.
   Future<void> resetServer() async {
     await store.writeServerUrl('');
+    await _tokenStore.writeToken('');
     _api = null;
     _serverInfo = null;
+    _apiToken = null;
     notifyListeners();
+  }
+
+  static String? _cleanToken(String? value) {
+    final trimmed = value?.trim();
+    return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
   }
 
   static String? _normalizeUrl(String input) {

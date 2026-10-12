@@ -1,6 +1,6 @@
 [project]
 name = "biounlock-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "Self-hosted backend for the BioUnlock remote-unlock agent"
 requires-python = ">=3.11"
 dependencies = [

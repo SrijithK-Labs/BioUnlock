@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_api_token
 from app.database import get_db
 from app.models import SecurityEvent, utcnow
 from app.schemas import SecurityEventOut
@@ -15,7 +16,11 @@ from app.schemas import SecurityEventOut
 router = APIRouter(tags=["events"])
 
 
-@router.get("/security-events", response_model=list[SecurityEventOut])
+@router.get(
+    "/security-events",
+    response_model=list[SecurityEventOut],
+    dependencies=[Depends(require_api_token)],
+)
 def list_security_events(
     limit: int = 50,
     days: int = 30,

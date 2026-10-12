@@ -95,6 +95,12 @@ class Settings(BaseSettings):
     # not used as a root of trust for the auth protocol (Ed25519 keys are).
     secret_key: str = "development-only-insecure-key-change-me"
 
+    # Shared secret the mobile app presents as ``Authorization: Bearer <token>``
+    # on every owner endpoint. The PC agent uses its own signed device
+    # credential instead, so it never needs this. Leaving it unset keeps the API
+    # open, which is only tolerated outside production.
+    api_token: str | None = None
+
     database_url: str = DEFAULT_DATABASE_URL
     data_dir: str = "./data"
     signing_key_path: str | None = None

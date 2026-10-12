@@ -1,3 +1,4 @@
+import 'package:biounlock_mobile/services/api_token_store.dart';
 import 'package:biounlock_mobile/services/preferences_store.dart';
 import 'package:biounlock_mobile/services/server_url_store.dart';
 import 'package:biounlock_mobile/state/app_state.dart';
@@ -23,6 +24,49 @@ void main() {
     expect(state.isConfigured, isTrue);
     expect(state.serverInfo?.rpId, 'example.com');
     expect(await store.readServerUrl(), 'https://example.com');
+  });
+
+  test('configureServer persists the API token and sends it', () async {
+    final tokenStore = InMemoryApiTokenStore();
+    final headers = <String?>[];
+    final state = AppState(
+      store: InMemoryServerUrlStore(),
+      tokenStore: tokenStore,
+      passkeyService: FakePasskeyService(),
+      httpClient: routedClient({
+        'GET /api/v1/server/info': (request) {
+          headers.add(request.headers['Authorization']);
+          return ok(serverInfoJson());
+        },
+      }),
+    );
+
+    final succeeded = await state.configureServer('example.com', token: 'abc123');
+
+    expect(succeeded, isTrue);
+    expect(state.apiToken, 'abc123');
+    expect(await tokenStore.readToken(), 'abc123');
+    expect(headers, ['Bearer abc123']);
+  });
+
+  test('init restores a stored API token', () async {
+    final headers = <String?>[];
+    final state = AppState(
+      store: InMemoryServerUrlStore(serverUrl: 'https://example.com'),
+      tokenStore: InMemoryApiTokenStore(token: 'stored-token'),
+      passkeyService: FakePasskeyService(),
+      httpClient: routedClient({
+        'GET /api/v1/server/info': (request) {
+          headers.add(request.headers['Authorization']);
+          return ok(serverInfoJson());
+        },
+      }),
+    );
+
+    await state.init();
+
+    expect(state.apiToken, 'stored-token');
+    expect(headers, ['Bearer stored-token']);
   });
 
   test('configureServer accepts a plain http LAN url', () async {

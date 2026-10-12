@@ -7,13 +7,45 @@ import time
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.security import device_auth_message, verify_message_signature
+from app.core.security import (
+    constant_time_equals,
+    device_auth_message,
+    verify_message_signature,
+)
 from app.database import get_db
 from app.models import Device, DeviceStatus
 
 
 def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+def require_api_token(request: Request) -> None:
+    """Guard owner endpoints with the shared API token.
+
+    Only the mobile app holds this secret; the PC agent authenticates with its
+    signed device credential instead. When no token is configured we keep the
+    API open for tests and local development, but refuse to serve in production
+    so a misconfigured deploy fails closed rather than exposing the API.
+    """
+    settings = request.app.state.settings
+    expected = settings.api_token
+    if not expected:
+        if settings.environment.lower() == "production":
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server is not configured: BIO_API_TOKEN is required.",
+            )
+        return
+
+    header = request.headers.get("authorization", "")
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not constant_time_equals(token.strip(), expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="A valid API token is required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def _parse_device_auth(header: str) -> tuple[str, int, str] | None:
