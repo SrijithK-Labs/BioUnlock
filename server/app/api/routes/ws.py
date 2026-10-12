@@ -38,6 +38,12 @@ async def agent_socket(websocket: WebSocket) -> None:
             await websocket.close(code=4401)
             return
 
+        # Only paired PCs get a socket; an enrolled-but-unconfirmed device (the
+        # enroll endpoint is open) has no reason to hold a connection.
+        if device.status != DeviceStatus.active:
+            await websocket.close(code=4403)
+            return
+
         await websocket.accept()
         device.last_seen_at = utcnow()
         session.commit()
