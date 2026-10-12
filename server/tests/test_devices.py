@@ -119,6 +119,22 @@ def test_device_auth_wrong_key(client: TestClient) -> None:
     assert client.get("/api/v1/devices/me", headers=header).status_code == 401
 
 
+def test_device_auth_failures_are_indistinguishable(client: TestClient) -> None:
+    device_id, key, fp = enroll_and_pair(client)
+
+    unknown = device_auth_header(key, fp, "00000000-0000-0000-0000-000000000000")
+    bad_sig = device_auth_header(key, fp, device_id)
+    bad_sig["Authorization"] = bad_sig["Authorization"][:-4] + "AAAA"
+    expired = device_auth_header(key, fp, device_id, expired=True, expiry_offset=600)
+
+    messages = set()
+    for header in (unknown, bad_sig, expired):
+        response = client.get("/api/v1/devices/me", headers=header)
+        assert response.status_code == 401
+        messages.add(response.json()["error"]["message"])
+    assert messages == {"Device authentication failed."}
+
+
 def test_heartbeat(client: TestClient) -> None:
     device_id, key, fp = enroll_and_pair(client)
     response = client.post("/api/v1/devices/me/heartbeat", headers=device_auth_header(key, fp, device_id))

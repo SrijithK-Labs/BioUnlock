@@ -71,6 +71,16 @@ def get_current_device(request: Request, db: Session = Depends(get_db)) -> Devic
     )
 
 
+def _device_auth_failed() -> HTTPException:
+    # One message for every failure so a caller cannot probe whether a device
+    # id exists or was revoked.
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Device authentication failed.",
+        headers={"WWW-Authenticate": "Biounlock"},
+    )
+
+
 def resolve_device(db: Session, header: str, settings, server_key) -> Device:
     parsed = _parse_device_auth(header)
     if parsed is None:
@@ -82,15 +92,15 @@ def resolve_device(db: Session, header: str, settings, server_key) -> Device:
     device_id, expiry, signature = parsed
     device = db.get(Device, device_id)
     if device is None or device.status == DeviceStatus.revoked:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown device.")
+        raise _device_auth_failed()
 
     now = int(time.time())
     if expiry < now - settings.clock_skew_seconds or expiry > now + settings.session_ttl_seconds * 4:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Device signature expired.")
+        raise _device_auth_failed()
 
     message = device_auth_message(server_key.fingerprint(), device_id, expiry)
     if not verify_message_signature(message, signature, device.public_key_pem):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device signature.")
+        raise _device_auth_failed()
     return device
 
 
