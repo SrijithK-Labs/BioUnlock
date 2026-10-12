@@ -62,6 +62,35 @@ def test_revoked_device_cannot_authenticate(client: TestClient, server_fingerpri
     assert client.get("/api/v1/devices/me", headers=header).status_code == 401
 
 
+def test_delete_revoked_device(client: TestClient) -> None:
+    device_id, _key, _fp = enroll_and_pair(client)
+    client.post(f"/api/v1/devices/{device_id}/revoke")
+    response = client.delete(f"/api/v1/devices/{device_id}")
+    assert response.status_code == 200
+    assert client.get(f"/api/v1/devices/{device_id}").status_code == 404
+    assert client.get("/api/v1/devices").json() == []
+
+
+def test_delete_active_device_is_rejected(client: TestClient) -> None:
+    device_id, _key, _fp = enroll_and_pair(client)
+    response = client.delete(f"/api/v1/devices/{device_id}")
+    assert response.status_code == 409
+    assert client.get(f"/api/v1/devices/{device_id}").status_code == 200
+
+
+def test_delete_unknown_device(client: TestClient) -> None:
+    assert client.delete("/api/v1/devices/missing").status_code == 404
+
+
+def test_delete_device_purges_related_rows(client: TestClient) -> None:
+    device_id, _key, _fp = enroll_and_pair(client)
+    client.post(f"/api/v1/devices/{device_id}/revoke")
+    client.delete(f"/api/v1/devices/{device_id}")
+    events = client.get("/api/v1/security-events").json()
+    assert all(event["device_id"] != device_id for event in events)
+    assert any(event["event_type"] == "device_deleted" for event in events)
+
+
 def test_new_device_detail(client: TestClient, server_fingerprint: str) -> None:
     device_id, key, fp = enroll_and_pair(client)
     me = client.get("/api/v1/devices/me", headers=device_auth_header(key, fp, device_id))

@@ -71,4 +71,22 @@ class DevicesController extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Permanently removes a revoked PC and refreshes the list.
+  Future<bool> remove(String deviceId) async {
+    _busy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _client.deleteDevice(deviceId);
+      await load();
+      return true;
+    } on ApiException catch (error) {
+      _error = error.message;
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
 }

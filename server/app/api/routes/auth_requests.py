@@ -225,11 +225,17 @@ async def create_auth_request(
 @router.get("/requests", response_model=list[AuthRequestOut])
 def list_requests(
     limit: int = 50,
+    days: int = 30,
     db: Session = Depends(get_db),
 ) -> list[AuthRequestOut]:
     limit = max(1, min(limit, 200))
+    days = max(1, min(days, 365))
+    since = utcnow() - timedelta(days=days)
     rows = db.execute(
-        select(AuthRequest).order_by(AuthRequest.created_at.desc()).limit(limit)
+        select(AuthRequest)
+        .where(AuthRequest.created_at >= since)
+        .order_by(AuthRequest.created_at.desc())
+        .limit(limit)
     ).scalars().all()
     return [_request_out(db, r) for r in rows]
 

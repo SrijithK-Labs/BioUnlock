@@ -120,3 +120,16 @@ def test_list_requests(client: TestClient) -> None:
     listing = client.get("/api/v1/requests").json()
     assert len(listing) == 1
     assert listing[0]["pc_name"] == "Test PC"
+
+
+def test_list_requests_days_filter(client: TestClient, app) -> None:
+    authenticator, device_id, _key, _fp = _setup(client)
+    request_id = create_auth_request(client, device_id, authenticator).json()["id"]
+    session = app.state.session_factory()
+    row = session.execute(select(AuthRequest).where(AuthRequest.id == request_id)).scalar_one()
+    row.created_at = utcnow() - timedelta(days=3)
+    session.commit()
+    session.close()
+
+    assert client.get("/api/v1/requests?days=1").json() == []
+    assert len(client.get("/api/v1/requests?days=7").json()) == 1

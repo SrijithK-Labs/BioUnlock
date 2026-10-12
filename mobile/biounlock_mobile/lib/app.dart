@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/setup_screen.dart';
 import 'state/app_state.dart';
+import 'theme.dart';
 
 class BioUnlockApp extends StatelessWidget {
   const BioUnlockApp({super.key, required this.appState});
@@ -14,14 +15,15 @@ class BioUnlockApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<AppState>.value(
       value: appState,
-      child: MaterialApp(
-        title: 'BioUnlock',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E6BE6)),
-          useMaterial3: true,
+      child: Consumer<AppState>(
+        builder: (context, state, _) => MaterialApp(
+          title: 'BioUnlock',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: state.themeMode,
+          home: const _RootGate(),
         ),
-        home: const _RootGate(),
       ),
     );
   }

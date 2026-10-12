@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import client_ip, get_current_device, require_active_device
@@ -11,7 +11,17 @@ from app.core.rate_limit import rate_limit
 from app.core.security import load_public_key_from_pem
 from app.core.time import as_utc
 from app.database import get_db
-from app.models import AuthRequest, AuthRequestStatus, Device, DeviceStatus, SecurityEventType, utcnow
+from app.models import (
+    AuthRequest,
+    AuthRequestStatus,
+    Challenge,
+    Device,
+    DeviceStatus,
+    PairingCode,
+    SecurityEvent,
+    SecurityEventType,
+    utcnow,
+)
 from app.schemas import (
     DeviceEnrollRequest,
     DeviceEnrollResponse,
@@ -178,6 +188,39 @@ async def revoke_device(
     db.commit()
     await request.app.state.connection_manager.close_device(device.id, code=4001)
     return MessageResponse(message="Device revoked.")
+
+
+@router.delete("/devices/{device_id}", response_model=MessageResponse)
+def delete_device(
+    device_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MessageResponse:
+    device = db.get(Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found.")
+    if device.status != DeviceStatus.revoked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Revoke the PC before removing it.",
+        )
+
+    # Remove everything tied to this PC so revoked hardware does not keep
+    # accumulating rows (codes, requests, challenges and its events).
+    name = device.name
+    db.execute(delete(PairingCode).where(PairingCode.device_id == device_id))
+    db.execute(delete(AuthRequest).where(AuthRequest.pc_id == device_id))
+    db.execute(delete(Challenge).where(Challenge.pc_id == device_id))
+    db.execute(delete(SecurityEvent).where(SecurityEvent.device_id == device_id))
+    db.delete(device)
+    record_event(
+        db,
+        event_type=SecurityEventType.DEVICE_DELETED,
+        detail=f"Device '{name}' removed by owner.",
+        ip=client_ip(request),
+    )
+    db.commit()
+    return MessageResponse(message="Device removed.")
 
 
 @router.post("/devices/me/heartbeat", response_model=HeartbeatResponse)

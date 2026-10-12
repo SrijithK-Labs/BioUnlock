@@ -48,8 +48,26 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('BioUnlock'),
-          actions: const [],
+          titleSpacing: 16,
+          title: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(
+                  Icons.fingerprint,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text('BioUnlock'),
+            ],
+          ),
         ),
         body: IndexedStack(
           index: _index,

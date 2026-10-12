@@ -53,6 +53,7 @@ class SecurityEventType(str, enum.Enum):
     DEVICE_ENROLLED = "device_enrolled"
     DEVICE_PAIRED = "device_paired"
     DEVICE_REVOKED = "device_revoked"
+    DEVICE_DELETED = "device_deleted"
     DEVICE_HEARTBEAT = "device_heartbeat"
     AUTH_REQUEST_CREATED = "auth_request_created"
     AUTH_REQUEST_DELIVERED = "auth_request_delivered"

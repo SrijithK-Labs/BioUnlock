@@ -142,6 +142,40 @@ void main() {
       throwsA(isA<ApiException>().having((e) => e.code, 'code', 'network_error')),
     );
   });
+
+  test('deleteDevice issues a DELETE to the device path', () async {
+    String? method;
+    String? path;
+    final client = ApiClient(
+      baseUrl: 'https://example.com',
+      httpClient: routedClient({
+        'DELETE /api/v1/devices/dev-1': (request) {
+          method = request.method;
+          path = request.url.path;
+          return http.Response('', 204);
+        },
+      }),
+    );
+    await client.deleteDevice('dev-1');
+    expect(method, 'DELETE');
+    expect(path, '/api/v1/devices/dev-1');
+  });
+
+  test('security events request includes the history cap', () async {
+    Uri? seen;
+    final client = ApiClient(
+      baseUrl: 'https://example.com',
+      httpClient: routedClient({
+        'GET /api/v1/security-events': (request) {
+          seen = request.url;
+          return ok([]);
+        },
+      }),
+    );
+    await client.securityEvents();
+    expect(seen?.queryParameters['limit'], '50');
+    expect(seen?.queryParameters['days'], '30');
+  });
 }
 
 dynamic jsonDecodeCompat(String body) => body.isEmpty ? null : jsonDecode(body);

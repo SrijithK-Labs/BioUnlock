@@ -1,5 +1,7 @@
+import 'package:biounlock_mobile/services/preferences_store.dart';
 import 'package:biounlock_mobile/services/server_url_store.dart';
 import 'package:biounlock_mobile/state/app_state.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fakes.dart';
@@ -93,5 +95,33 @@ void main() {
     expect(state.isConfigured, isFalse);
     expect(state.serverUrl, isNull);
     expect(await store.readServerUrl(), '');
+  });
+
+  test('theme defaults to system and persists changes', () async {
+    final preferences = InMemoryPreferencesStore();
+    final state = AppState(
+      store: InMemoryServerUrlStore(),
+      passkeyService: FakePasskeyService(),
+      preferences: preferences,
+    );
+
+    expect(state.themeMode, ThemeMode.system);
+
+    await state.setThemeMode(ThemeMode.dark);
+
+    expect(state.themeMode, ThemeMode.dark);
+    expect(await preferences.readThemeMode(), 'dark');
+  });
+
+  test('init restores a stored theme mode', () async {
+    final state = AppState(
+      store: InMemoryServerUrlStore(),
+      passkeyService: FakePasskeyService(),
+      preferences: InMemoryPreferencesStore(themeMode: 'light'),
+    );
+
+    await state.init();
+
+    expect(state.themeMode, ThemeMode.light);
   });
 }

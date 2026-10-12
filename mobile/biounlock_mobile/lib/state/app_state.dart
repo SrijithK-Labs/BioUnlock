@@ -1,24 +1,28 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/misc.dart';
 import '../services/api_client.dart';
 import '../services/api_exception.dart';
 import '../services/passkey_service.dart';
+import '../services/preferences_store.dart';
 import '../services/server_url_store.dart';
 
-/// Root application state: server configuration and the shared [ApiClient].
-/// Child controllers read [api] from here.
+/// Root application state: server configuration, theme and the shared
+/// [ApiClient]. Child controllers read [api] from here.
 class AppState extends ChangeNotifier {
   AppState({
     required this.store,
     required PasskeyService passkeyService,
+    PreferencesStore? preferences,
     http.Client? httpClient,
   }) : _passkeyService = passkeyService,
+       _preferences = preferences ?? InMemoryPreferencesStore(),
        _httpClient = httpClient;
 
   final ServerUrlStore store;
   final PasskeyService _passkeyService;
+  final PreferencesStore _preferences;
   final http.Client? _httpClient;
 
   ApiClient? _api;
@@ -26,6 +30,7 @@ class AppState extends ChangeNotifier {
   bool _busy = false;
   String? _error;
   bool _initialized = false;
+  ThemeMode _themeMode = ThemeMode.system;
 
   ApiClient? get api => _api;
   PasskeyService get passkeys => _passkeyService;
@@ -35,6 +40,7 @@ class AppState extends ChangeNotifier {
   bool get busy => _busy;
   String? get error => _error;
   bool get initialized => _initialized;
+  ThemeMode get themeMode => _themeMode;
 
   void _setBusy(bool value) {
     _busy = value;
@@ -46,10 +52,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Loads any stored server URL on startup and refreshes server info in the
-  /// background. A server that is unreachable at launch stays configured so
-  /// the user can fix the URL from Settings.
+  /// Loads any stored server URL and theme mode on startup and refreshes
+  /// server info in the background. A server that is unreachable at launch
+  /// stays configured so the user can fix the URL from Settings.
   Future<void> init() async {
+    _themeMode = _themeModeFromName(await _preferences.readThemeMode());
     final url = await store.readServerUrl();
     if (url != null && url.isNotEmpty) {
       _api = ApiClient(baseUrl: url, httpClient: _httpClient);
@@ -61,6 +68,14 @@ class AppState extends ChangeNotifier {
     }
     _initialized = true;
     notifyListeners();
+  }
+
+  /// Updates and persists the app-wide [ThemeMode].
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (mode == _themeMode) return;
+    _themeMode = mode;
+    notifyListeners();
+    await _preferences.writeThemeMode(_themeModeName(mode));
   }
 
   /// Points the app at a (new) server and validates reachability.
@@ -105,4 +120,16 @@ class AppState extends ChangeNotifier {
     if (uri == null || uri.host.isEmpty) return null;
     return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
   }
+
+  static String _themeModeName(ThemeMode mode) => switch (mode) {
+    ThemeMode.light => 'light',
+    ThemeMode.dark => 'dark',
+    ThemeMode.system => 'system',
+  };
+
+  static ThemeMode _themeModeFromName(String? name) => switch (name) {
+    'light' => ThemeMode.light,
+    'dark' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
 }

@@ -70,8 +70,8 @@ class ApiClient {
   Future<ServerInfo> serverInfo() =>
       _get('/server/info', (d) => ServerInfo.fromJson(d as Map<String, dynamic>));
 
-  Future<List<SecurityEvent>> securityEvents({int limit = 50}) async {
-    final data = await _send('GET', '/security-events?limit=$limit');
+  Future<List<SecurityEvent>> securityEvents({int limit = 50, int days = 30}) async {
+    final data = await _send('GET', '/security-events?limit=$limit&days=$days');
     return (data as List)
         .map((e) => SecurityEvent.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -138,6 +138,10 @@ class ApiClient {
   Future<void> revokeDevice(String id) =>
       _send('POST', '/devices/$id/revoke');
 
+  /// Permanently removes a revoked PC (and its server-side history).
+  Future<void> deleteDevice(String id) =>
+      _send('DELETE', '/devices/$id');
+
   // --- Authorization requests ---
 
   Future<Map<String, dynamic>> beginAuthorization(String pcId) async =>
@@ -163,8 +167,8 @@ class ApiClient {
     await _send('GET', '/requests/$id') as Map<String, dynamic>,
   );
 
-  Future<List<AuthRequest>> listRequests({int limit = 50}) async {
-    final data = await _send('GET', '/requests?limit=$limit');
+  Future<List<AuthRequest>> listRequests({int limit = 50, int days = 30}) async {
+    final data = await _send('GET', '/requests?limit=$limit&days=$days');
     return (data as List)
         .map((e) => AuthRequest.fromJson(e as Map<String, dynamic>))
         .toList();
