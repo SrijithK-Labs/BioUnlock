@@ -23,7 +23,9 @@ background agent. It starts automatically at login.
 
 ## Install (end users)
 
-1. Get `BioUnlock.exe` (download it, or build it with `build.ps1`).
+1. Download `BioUnlock.exe` and `install-agent.ps1` from
+   [Releases](https://github.com/SrijithK-Labs/BioUnlock/releases) (or build the
+   `.exe` yourself with `build.ps1`).
 2. Run the per-user installer:
 
    ```powershell
@@ -40,8 +42,9 @@ background agent. It starts automatically at login.
    ```powershell
    powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource
    ```
-3. Click the tray icon, enter your backend URL and API token, then **Link this
-   PC** and scan the QR code with the phone app.
+3. Click the tray icon, enter your backend URL and the API token (the only
+   secret you need), then **Link this PC** and scan the QR code with the phone
+   app.
 4. To unlock the actual Windows logon screen you also need the Credential
    Provider (below) and a stored Windows credential (**Set Windows password…**
    in the tray menu, or `python -m biounlock_agent set-credential`).

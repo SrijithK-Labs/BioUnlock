@@ -4,130 +4,148 @@
   <img src="logo/logo.png" alt="BioUnlock logo" width="140" />
 </p>
 
-> **Status: experimental.** BioUnlock works end to end: your phone authorizes a
-> signed request over the Internet and the paired Windows PC verifies it and
-> unlocks or locks itself via a native Credential Provider.
+**Unlock your Windows PC with your phone's fingerprint — from anywhere.**
 
-BioUnlock lets you unlock a paired Windows PC using your Android phone's
-biometric authentication — even when the phone and the PC are on completely
-different networks. The phone and PC communicate through a backend you host.
+BioUnlock pairs an Android phone with a Windows PC through a small backend you
+host yourself. Approve an unlock with the phone's biometrics and the phone sends
+a signed request over the Internet; the PC independently verifies it and signs
+you in through a native Windows Credential Provider. The PC never opens an
+inbound port, and Bluetooth or "same Wi-Fi" is never required.
 
-The PC never has to expose an inbound port, and Bluetooth/`same-Wi-Fi` is
-never required.
+> **Status: experimental.** It works end to end today. Don't use it where losing
+> your primary Windows credentials would be unacceptable.
 
-## What works today
+## Download
 
-- FastAPI backend with WebAuthn passkeys, device pairing, and a signed
-  authentication-request protocol. It is **single-owner**: there are no accounts
-  or sessions by design.
-- Flutter Android app with a configurable backend URL, passkey approval, PC
-  pairing, and truthful request status.
-- Windows **tray app** (PyInstaller `.exe` + installer) that links the PC, runs
-  in the background, starts at login, connects outbound, independently verifies
-  signed requests, and reports status back.
-- Native Windows **Credential Provider** that signs you in at the logon screen
-  from an approved request.
-- MitM-friendly TLS posture, secure storage for device identity, revocation,
-  security event history, and rate limiting.
+Prebuilt artifacts are attached to
+[**Releases**](https://github.com/SrijithK-Labs/BioUnlock/releases):
+
+| Platform | File | What it is |
+| --- | --- | --- |
+| Windows | `BioUnlock.exe` + `install-agent.ps1` | Tray app that links and controls the PC |
+| Android | `app-release.apk` | Phone authenticator (passkey) |
+
+You still need to **host the backend** yourself (one-time, a few minutes) — see
+[Quick start](#quick-start). The Windows installer and the phone app both need
+only two things: your backend **URL** and your **API token**.
+
+## How it works
+
+```
+  Phone (passkey)            Your backend                 Windows PC
+  ───────────────  request   ─────────────    envelope   ──────────────
+  biometric  ─────────────▶  verify + sign  ───────────▶ agent verifies
+  approval                   & store                    signature + replay
+                                                            │
+                                                            ▼
+                                              Credential Provider signs in
+```
+
+The phone's passkey private key never leaves the phone, and every action is
+authorized by a short-lived, single-use, Ed25519-signed envelope that the PC
+checks before doing anything. See [`docs/architecture.md`](docs/architecture.md),
+[`docs/protocol.md`](docs/protocol.md), and
+[`docs/threat-model.md`](docs/threat-model.md).
 
 ## Repository layout
 
 ```
-mobile/biounlock_mobile/   Flutter app (Android)
+mobile/biounlock_mobile/   Flutter Android app
 server/                    FastAPI backend + Alembic migrations + tests
-pc-agent/                  Windows tray app + agent + credentials provider
+pc-agent/                  Windows tray app + agent + credential provider
 docs/                      Architecture, protocol, threat model, security
-.github/workflows/         CI
 ```
 
-BioUnlock is meant to be **self-hosted per user**. Deploy `server/` somewhere
-that runs Python (for example Vercel) and point both the phone app and the
-Windows app at that URL. Because there are no accounts, treat the URL as a
-secret — anyone who knows it can try to register a passkey or link a PC.
+BioUnlock is **self-hosted and single-owner** by design: there are no accounts or
+sessions. Treat your backend URL as private — anyone who knows it *and* your API
+token could try to enroll a device.
 
-## Quick start (development)
+## Quick start
 
-### 1. Backend
+### 1. Host the backend
+
+The only secret you must set is your **API token**. Everything else — the
+database, the signing key, and the WebAuthn relying-party domain — is detected
+automatically.
+
+**Vercel (recommended, serverless):** import this repo, set the project's **Root
+Directory** to `server`, add a **Postgres** database (Storage → Marketplace →
+Neon), and set one environment variable:
+
+```
+BIO_API_TOKEN = <your-secret>
+```
+
+Then run the migrations once against that database. Full steps:
+[`server/README.md`](server/README.md).
+
+**Any small VM:** see [`server/README.md`](server/README.md#run-on-a-vm).
+
+Generate a token with:
 
 ```bash
-cd server
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-# source .venv/bin/activate
-pip install -r requirements.txt
-cp ../.env.example .env          # edit values for local dev
-alembic upgrade head
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-OpenAPI docs: <http://localhost:8000/docs>
+### 2. Phone app
 
-### 2. Mobile app
+Install `app-release.apk` from [Releases](https://github.com/SrijithK-Labs/BioUnlock/releases)
+(or build it — see [`mobile/biounlock_mobile/README.md`](mobile/biounlock_mobile/README.md)).
+In the app open **Settings → Server**, enter your backend URL, then enter the same
+**API token**.
+
+Real passkeys need an HTTPS domain with a Digital Asset Links association (your
+backend URL). See [`docs/mobile.md`](docs/mobile.md) for the passkey requirement
+and build troubleshooting.
+
+### 3. Windows app
+
+Install `BioUnlock.exe` via the per-user installer (no admin needed), then in the
+tray app enter the backend **URL** and **API token** and click **Link this PC**,
+scanning the QR code with the phone. To unlock the actual logon screen, also
+install the Credential Provider and store your Windows credential. Full steps:
+[`pc-agent/README.md`](pc-agent/README.md).
+
+## Configuration: just the token
+
+Set `BIO_API_TOKEN` in three places — that is the only shared secret:
+
+1. **Server** — as a Vercel environment variable (or `server/.env` locally).
+2. **Phone** — Settings → API token.
+3. **PC agent** — the Link dialog (or `--token` / `BIOUNLOCK_AGENT_TOKEN`).
+
+The phone sends it as `Authorization: Bearer <token>` on every owner call, and
+the PC agent sends it once when enrolling, then authenticates with its own signed
+device key. In production the server refuses owner endpoints if the token is
+unset (fail closed). HTTP is allowed only for development hosts; production must
+be HTTPS.
+
+## Build from source
 
 ```bash
-cd mobile/biounlock_mobile
-flutter pub get
-flutter run                       # on a connected Android device
+# Backend
+cd server && pip install -r requirements.txt && uvicorn app.main:app --reload
+
+# Phone
+cd mobile/biounlock_mobile && flutter pub get && flutter run
+
+# Windows agent
+cd pc-agent && pip install -r requirements.txt && python -m biounlock_agent tray
 ```
-
-In the app, open **Settings → Server**, enter your backend base URL
-(e.g. `http://10.0.2.2:8000` from the Android emulator, or a reachable address),
-and tap **Test Connection**.
-
-Real passkeys require an HTTPS relying-party domain with a Digital Asset Links
-association, so passkey login cannot be tested against bare `localhost` on a
-physical device. See [`docs/mobile.md`](docs/mobile.md) for the passkey
-requirement, build steps, and Android/Gradle troubleshooting (IPv6, Kotlin
-incremental caches, corrupted Gradle caches).
-
-### 3. PC agent
-
-```bash
-cd pc-agent
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m biounlock_agent tray      # system tray app
-# or run the background agent in the foreground:
-python -m biounlock_agent run
-```
-
-## Environment / configuration
-
-All backend configuration is read from environment variables or a `server/.env`
-file. See `.env.example` for the full list with comments.
-
-Both the mobile app and the Windows software let the user type in their own
-backend URL. They never hardcode a server. HTTP is only allowed for development
-hosts (localhost / private networks); production servers must be HTTPS.
-
-Set `BIO_API_TOKEN` on the server and enter the same value in the app: it is the
-shared secret the phone sends on every owner endpoint (registration, device and
-passkey management, activity history) and that the PC agent sends once when it
-enrolls. After enrollment the PC agent authenticates with its own signed device
-credential. In production the API refuses owner endpoints when the token is
-unset.
 
 ## Tests
 
 ```bash
-# Backend
-cd server && pytest
-
-# PC agent
-cd pc-agent && pytest
-
-# Flutter
-cd mobile/biounlock_mobile && flutter analyze && flutter test
+cd server && pytest && ruff check .          # backend
+cd pc-agent && pytest && ruff check .         # Windows agent
+cd mobile/biounlock_mobile && flutter analyze && flutter test   # phone
 ```
 
 ## Security
 
-See `docs/security.md`, `docs/threat-model.md`, `docs/protocol.md`, and
-`SECURITY.md`. Do not use this software where losing your primary Windows
-credentials is not acceptable — it is experimental.
+See [`SECURITY.md`](SECURITY.md), [`docs/security.md`](docs/security.md),
+[`docs/threat-model.md`](docs/threat-model.md), and
+[`docs/protocol.md`](docs/protocol.md).
 
 ## License
 
