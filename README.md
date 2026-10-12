@@ -1,5 +1,9 @@
 # BioUnlock
 
+<p align="center">
+  <img src="logo/logo.png" alt="BioUnlock logo" width="140" />
+</p>
+
 > **Status: experimental.** BioUnlock works end to end: your phone authorizes a
 > signed request over the Internet and the paired Windows PC verifies it and
 > unlocks or locks itself via a native Credential Provider.

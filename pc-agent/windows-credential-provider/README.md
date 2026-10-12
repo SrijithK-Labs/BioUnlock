@@ -1,5 +1,9 @@
 # BioUnlock Windows Credential Provider
 
+<p align="center">
+  <img src="../../logo/logo.png" alt="BioUnlock logo" width="110" />
+</p>
+
 Native (C++) credential provider that unlocks the Windows lock screen when the
 paired phone approves a request. It is **added** to the normal sign-in options;
 the built-in password tile always remains.

@@ -1,0 +1,7 @@
+// resources.rc - embeds the BioUnlock tile image in the credential provider DLL.
+#include <windows.h>
+
+// Must match IDB_TILE_IMAGE in src/Common.h.
+#define IDB_TILE_IMAGE 101
+
+IDB_TILE_IMAGE BITMAP "assets\\logo.bmp"

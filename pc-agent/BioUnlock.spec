@@ -14,7 +14,7 @@ a = Analysis(
     ["run_tray.py"],
     pathex=["."],
     binaries=[],
-    datas=[],
+    datas=[("biounlock_agent/assets/logo.png", "assets")],
     hiddenimports=[
         # pystray picks its backend dynamically; make the Win32 one explicit.
         "pystray._win32",
@@ -50,4 +50,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="assets/BioUnlock.ico",
 )

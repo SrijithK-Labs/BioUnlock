@@ -486,6 +486,8 @@ IFACEMETHODIMP CBioUnlockCredential::GetBitmapValue(DWORD dwFieldID, HBITMAP* ph
     }
     *phbmp = nullptr;
     if (dwFieldID == FI_TILEIMAGE) {
+        *phbmp = static_cast<HBITMAP>(
+            LoadImageW(g_hInstance, MAKEINTRESOURCEW(IDB_TILE_IMAGE), IMAGE_BITMAP, 0, 0, 0));
         return S_OK;
     }
     return E_INVALIDARG;

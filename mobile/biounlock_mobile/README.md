@@ -1,6 +1,10 @@
-# biounlock_mobile
+# BioUnlock mobile app
 
-BioUnlock mobile authenticator
+<p align="center">
+  <img src="../../logo/logo.png" alt="BioUnlock logo" width="110" />
+</p>
+
+Flutter Android authenticator: approve PC unlock/lock requests with a passkey.
 
 ## Getting Started
 

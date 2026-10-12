@@ -1,5 +1,9 @@
 # BioUnlock Windows app
 
+<p align="center">
+  <img src="../logo/logo.png" alt="BioUnlock logo" width="110" />
+</p>
+
 Outbound-only Windows agent. It pairs a PC with your BioUnlock backend, pins the
 server's Ed25519 signing key, independently verifies every signed authorization
 envelope, and reports a truthful result. It never opens an inbound port and never

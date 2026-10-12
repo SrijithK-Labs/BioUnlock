@@ -8,9 +8,24 @@ so a pairing that landed later was missed until the app was restarted.
 
 from __future__ import annotations
 
-from biounlock_agent.tray import render_qr_image, watch_for_pairing
+from biounlock_agent.tray import (
+    asset_path,
+    create_icon_image,
+    render_qr_image,
+    watch_for_pairing,
+)
 
 PAYLOAD = '{"type":"biounlock-pairing","version":1}'
+
+
+def test_logo_asset_is_packaged():
+    assert asset_path("logo.png") is not None
+
+
+def test_create_icon_image_scales_the_logo():
+    image = create_icon_image()
+    assert image.mode == "RGBA"
+    assert image.size == (64, 64)
 
 
 def test_render_qr_image_returns_grayscale_square():

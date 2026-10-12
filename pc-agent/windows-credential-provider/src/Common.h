@@ -40,6 +40,9 @@ inline const CLSID CLSID_BioUnlockProvider = {
 // (running as SYSTEM on the secure desktop) is the only consumer.
 #define BIOUNLOCK_TICKET_FILENAME L"unlock_ticket.bin"
 
+// Bitmap resource id for the sign-in tile image (see resources.rc).
+#define IDB_TILE_IMAGE 101
+
 extern HINSTANCE g_hInstance;
 
 // Keeps the DLL loaded while COM objects are alive.

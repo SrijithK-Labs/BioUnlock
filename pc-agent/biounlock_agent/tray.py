@@ -229,8 +229,33 @@ def set_autostart(enabled: bool) -> None:
 # --- icon -----------------------------------------------------------------
 
 
+def asset_path(name: str) -> Path | None:
+    """Locate a bundled asset, working both from source and a PyInstaller build."""
+    candidates = [Path(__file__).resolve().parent / "assets" / name]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.insert(0, Path(meipass) / "assets" / name)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def create_icon_image() -> Image.Image:
-    """Draw a simple BioUnlock tray icon."""
+    """Return the BioUnlock tray icon, falling back to a drawn glyph."""
+    logo = asset_path("logo.png")
+    if logo is not None:
+        try:
+            image = Image.open(logo).convert("RGBA")
+            image.thumbnail((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+            return image
+        except Exception:  # noqa: BLE001 - never let a bad logo break the tray
+            logger.warning("Could not load the tray logo; using the fallback icon.")
+    return _fallback_icon_image()
+
+
+def _fallback_icon_image() -> Image.Image:
+    """Draw a simple BioUnlock tray icon when no logo asset is available."""
     size = ICON_SIZE
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -313,6 +338,7 @@ class TrayApp:
         self._pairing_label = None
         self._photo = None
         self._pairing_thread: threading.Thread | None = None
+        self._logo_photo = None
 
         self.icon = pystray.Icon(
             "BioUnlock", create_icon_image(), "BioUnlock", menu=self._build_menu()
@@ -429,6 +455,16 @@ class TrayApp:
 
         frame = ttk.Frame(window, padding=16)
         frame.pack(fill="both", expand=True)
+
+        logo = asset_path("logo.png")
+        if logo is not None:
+            try:
+                logo_image = Image.open(logo).convert("RGBA")
+                logo_image.thumbnail((56, 56), Image.LANCZOS)
+                self._logo_photo = ImageTk.PhotoImage(logo_image)
+                ttk.Label(frame, image=self._logo_photo).pack(anchor="w", pady=(0, 6))
+            except Exception:  # noqa: BLE001 - the title alone is enough
+                self._logo_photo = None
 
         ttk.Label(frame, text="BioUnlock", font=("Segoe UI", 15, "bold")).pack(anchor="w")
         ttk.Label(

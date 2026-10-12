@@ -23,11 +23,14 @@ $sources = @(
     "`"$src\Ticket.cpp`""
 ) -join " "
 
-$cl = "cl /nologo /LD /EHsc /std:c++17 /W4 /utf-8 /DUNICODE /D_UNICODE $opt " +
-      "/I`"$src`" $sources /Fe:BioUnlockProvider.dll " +
-      "/link /DEF:`"$def`" secur32.lib crypt32.lib shell32.lib shlwapi.lib ole32.lib advapi32.lib"
+$res = Join-Path $buildDir "resources.res"
+$rc = "rc /nologo /fo`"$res`" `"$root\resources.rc`""
 
-$command = "call `"$vcvars`" >nul && cd /d `"$buildDir`" && $cl"
+$cl = "cl /nologo /LD /EHsc /std:c++17 /W4 /utf-8 /DUNICODE /D_UNICODE $opt " +
+      "/I`"$src`" $sources `"$res`" /Fe:BioUnlockProvider.dll " +
+      "/link /DEF:`"$def`" secur32.lib crypt32.lib shell32.lib shlwapi.lib ole32.lib advapi32.lib user32.lib"
+
+$command = "call `"$vcvars`" >nul && cd /d `"$root`" && $rc && cd /d `"$buildDir`" && $cl"
 cmd /c $command
 if ($LASTEXITCODE -ne 0) {
     throw "Build failed with exit code $LASTEXITCODE"
