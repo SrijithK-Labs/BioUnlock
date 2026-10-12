@@ -45,6 +45,16 @@ def test_unlock_endpoints_require_token(client: TestClient, settings: Settings) 
     assert client.post("/api/v1/auth/challenges", json=payload, headers=_auth()).status_code == 200
 
 
+def test_pairing_confirm_requires_token(client: TestClient, settings: Settings) -> None:
+    enrollment = enroll_device(client)
+    settings.api_token = TOKEN
+    body = {"pairing_code": enrollment["pairing_code"]}
+    assert client.post("/api/v1/pairing/confirm", json=body).status_code == 401
+    confirmed = client.post("/api/v1/pairing/confirm", json=body, headers=_auth())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["device"]["status"] == "active"
+
+
 def test_device_enrollment_is_not_gated(client: TestClient, settings: Settings) -> None:
     settings.api_token = TOKEN
     data = enroll_device(client)

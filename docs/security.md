@@ -17,8 +17,9 @@ Initial-release security notes. See also `threat-model.md` and `protocol.md`.
 ## Owner API token
 
 Every owner endpoint — passkey registration and management, device
-listing/revocation, security events, and authorization requests — requires the
-shared secret `BIO_API_TOKEN`, sent as `Authorization: Bearer <token>`. The
+listing/revocation, pairing confirmation, security events, and authorization
+requests — requires the shared secret `BIO_API_TOKEN`, sent as
+`Authorization: Bearer <token>`. The
 mobile app stores it in platform-secure storage and sends it on every call; the
 PC agent does not need it because it authenticates with its own signed device
 credential. If the token is unset the API stays open, which is only tolerated

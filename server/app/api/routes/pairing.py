@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import client_ip
+from app.api.deps import client_ip, require_api_token
 from app.api.routes.devices import device_to_out
 from app.core.rate_limit import rate_limit
 from app.database import get_db
@@ -18,7 +18,10 @@ router = APIRouter(tags=["pairing"])
 @router.post(
     "/pairing/confirm",
     response_model=PairingConfirmResponse,
-    dependencies=[Depends(rate_limit("pairing_confirm", limit=10, window=60))],
+    dependencies=[
+        Depends(rate_limit("pairing_confirm", limit=10, window=60)),
+        Depends(require_api_token),
+    ],
 )
 def pairing_confirm(
     payload: PairingConfirmRequest,
