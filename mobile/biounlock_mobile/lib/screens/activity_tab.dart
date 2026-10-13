@@ -5,7 +5,9 @@ import '../models/auth_request.dart';
 import '../models/misc.dart';
 import '../state/app_state.dart';
 import '../state/requests_controller.dart';
-import '../widgets/empty_state.dart';
+import '../theme.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/section_header.dart';
 import '../widgets/status_pill.dart';
 
 /// Activity keeps a short, bounded history: the last 30 days, at most 50 items.
@@ -28,18 +30,14 @@ class _ActivityTabState extends State<ActivityTab> {
     _events = _load();
   }
 
-  Future<List<SecurityEvent>> _load() =>
-      context.read<AppState>().api!.securityEvents(
-        limit: _historyLimit,
-        days: _historyDays,
-      );
+  Future<List<SecurityEvent>> _load() => context
+      .read<AppState>()
+      .api!
+      .securityEvents(limit: _historyLimit, days: _historyDays);
 
   Future<void> _refresh() async {
     setState(() => _events = _load());
-    await Future.wait([
-      _events,
-      context.read<RequestsController>().load(),
-    ]);
+    await Future.wait([_events, context.read<RequestsController>().load()]);
   }
 
   static bool _isRecent(DateTime value) {
@@ -56,20 +54,25 @@ class _ActivityTabState extends State<ActivityTab> {
         .toList();
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
-            const _SectionHeader(
-              'Recent requests',
-              subtitle: 'Last $_historyDays days',
+            SectionHeader(
+              title: 'Recent requests',
+              caption: 'Last $_historyDays days',
             ),
-            const SizedBox(height: 8),
             if (recentRequests.isEmpty)
-              const _EmptyCard('No authorization requests in this period.')
+              const _EmptyCard(
+                icon: Icons.hourglass_empty_rounded,
+                message: 'No authorization requests in this period.',
+              )
             else
-              Card(
+              GlassCard(
+                padding: EdgeInsets.zero,
                 child: Column(
                   children: [
                     for (var i = 0; i < recentRequests.length; i++) ...[
@@ -79,12 +82,11 @@ class _ActivityTabState extends State<ActivityTab> {
                   ],
                 ),
               ),
-            const SizedBox(height: 24),
-            const _SectionHeader(
-              'Security events',
-              subtitle: 'Last $_historyDays days',
+            const SizedBox(height: 28),
+            SectionHeader(
+              title: 'Security events',
+              caption: 'Last $_historyDays days',
             ),
-            const SizedBox(height: 8),
             FutureBuilder<List<SecurityEvent>>(
               future: _events,
               builder: (context, snapshot) {
@@ -96,16 +98,23 @@ class _ActivityTabState extends State<ActivityTab> {
                   );
                 }
                 if (snapshot.hasError) {
-                  return _EmptyCard('Could not load events: ${snapshot.error}');
+                  return _EmptyCard(
+                    icon: Icons.error_outline_rounded,
+                    message: 'Could not load events: ${snapshot.error}',
+                  );
                 }
                 final events = (snapshot.data ?? const <SecurityEvent>[])
                     .where((e) => _isRecent(e.createdAt))
                     .take(_historyLimit)
                     .toList();
                 if (events.isEmpty) {
-                  return const _EmptyCard('No security events in this period.');
+                  return const _EmptyCard(
+                    icon: Icons.shield_outlined,
+                    message: 'No security events in this period.',
+                  );
                 }
-                return Card(
+                return GlassCard(
+                  padding: EdgeInsets.zero,
                   child: Column(
                     children: [
                       for (var i = 0; i < events.length; i++) ...[
@@ -131,10 +140,9 @@ class _RequestTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = context.scheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
           _IconBadge(
@@ -148,14 +156,14 @@ class _RequestTile extends StatelessWidget {
               children: [
                 Text(
                   request.pcName ?? request.pcId,
-                  style: theme.textTheme.titleSmall,
+                  style: context.texts.titleSmall,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${_operationLabel(request.operation)} · ${_formatTime(request.createdAt)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: context.texts.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
@@ -180,10 +188,9 @@ class _EventTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = context.scheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -195,13 +202,13 @@ class _EventTile extends StatelessWidget {
               children: [
                 Text(
                   _eventLabel(event.eventType),
-                  style: theme.textTheme.titleSmall,
+                  style: context.texts.titleSmall,
                 ),
                 if (event.detail.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
                     event.detail,
-                    style: theme.textTheme.bodySmall?.copyWith(
+                    style: context.texts.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
@@ -212,7 +219,7 @@ class _EventTile extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             _formatTime(event.createdAt),
-            style: theme.textTheme.bodySmall?.copyWith(
+            style: context.texts.bodySmall?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
           ),
@@ -231,73 +238,56 @@ class _IconBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 40,
-      height: 40,
+      width: 42,
+      height: 42,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Icon(icon, size: 20, color: color),
     );
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.title, {this.subtitle});
-
-  final String title;
-  final String? subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(title, style: theme.textTheme.titleMedium),
-        if (subtitle != null) ...[
-          const SizedBox(width: 8),
-          Text(
-            subtitle!,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
 class _EmptyCard extends StatelessWidget {
-  const _EmptyCard(this.message);
+  const _EmptyCard({required this.icon, required this.message});
 
+  final IconData icon;
   final String message;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: EmptyState(
-          icon: Icons.history,
-          title: message,
-        ),
+    final scheme = context.scheme;
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: context.texts.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 IconData _statusIcon(String status) => switch (status) {
-  'verified' => Icons.verified_user,
-  'rejected' => Icons.gpp_bad,
-  'expired' => Icons.timer_off,
-  _ => Icons.hourglass_empty,
+  'verified' => Icons.verified_user_rounded,
+  'rejected' => Icons.gpp_bad_rounded,
+  'expired' => Icons.timer_off_rounded,
+  _ => Icons.hourglass_empty_rounded,
 };
 
 Color _statusColor(ColorScheme scheme, String status) => switch (status) {
-  'verified' => const Color(0xFF2E9E5B),
+  'verified' => const Color(0xFF34D399),
   'rejected' => scheme.error,
   'expired' => scheme.outline,
   _ => scheme.tertiary,
@@ -311,7 +301,10 @@ String _operationLabel(String operation) => switch (operation) {
 
 String _eventLabel(String eventType) => eventType
     .split('_')
-    .map((word) => word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1)}')
+    .map(
+      (word) =>
+          word.isEmpty ? word : '${word[0].toUpperCase()}${word.substring(1)}',
+    )
     .join(' ');
 
 String _formatTime(DateTime value) {

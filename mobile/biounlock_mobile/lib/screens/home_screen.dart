@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../state/devices_controller.dart';
 import '../state/passkeys_controller.dart';
 import '../state/requests_controller.dart';
+import '../widgets/brand_mark.dart';
 import 'activity_tab.dart';
 import 'devices_tab.dart';
 import 'passkeys_tab.dart';
@@ -41,29 +42,18 @@ class _HomeScreenState extends State<HomeScreen> {
           )..load(),
         ),
         ChangeNotifierProvider(
-          create: (_) =>
-              RequestsController(api: appState.api!, passkeys: appState.passkeys, apiProvider: client)
-                ..load(),
+          create: (_) => RequestsController(
+            api: appState.api!,
+            passkeys: appState.passkeys,
+            apiProvider: client,
+          )..load(),
         ),
       ],
       child: Scaffold(
         appBar: AppBar(
-          titleSpacing: 16,
-          title: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(9),
-                child: Image.asset(
-                  'assets/logo.png',
-                  width: 32,
-                  height: 32,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Text('BioUnlock'),
-            ],
-          ),
+          toolbarHeight: 68,
+          titleSpacing: 20,
+          title: const BrandMark(size: 34, showWordmark: true),
         ),
         body: IndexedStack(
           index: _index,
@@ -79,19 +69,23 @@ class _HomeScreenState extends State<HomeScreen> {
           onDestinationSelected: (i) => setState(() => _index = i),
           destinations: const [
             NavigationDestination(
-              icon: Icon(Icons.computer),
+              icon: Icon(Icons.computer_outlined),
+              selectedIcon: Icon(Icons.computer),
               label: 'PCs',
             ),
             NavigationDestination(
-              icon: Icon(Icons.key),
+              icon: Icon(Icons.key_outlined),
+              selectedIcon: Icon(Icons.key),
               label: 'Passkeys',
             ),
             NavigationDestination(
-              icon: Icon(Icons.history),
+              icon: Icon(Icons.history_outlined),
+              selectedIcon: Icon(Icons.history),
               label: 'Activity',
             ),
             NavigationDestination(
-              icon: Icon(Icons.settings),
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
               label: 'Settings',
             ),
           ],

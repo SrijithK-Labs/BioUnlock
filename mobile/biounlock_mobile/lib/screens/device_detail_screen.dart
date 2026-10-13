@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/device.dart';
 import '../state/devices_controller.dart';
 import '../state/requests_controller.dart';
+import '../theme.dart';
+import '../widgets/action_button.dart';
+import '../widgets/authorization.dart';
+import '../widgets/device_status.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/section_header.dart';
 import '../widgets/status_pill.dart';
 
 class DeviceDetailScreen extends StatelessWidget {
@@ -27,11 +33,13 @@ class DeviceDetailScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             _header(context),
-            const SizedBox(height: 16),
-            _details(context),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             _actions(context),
-            const SizedBox(height: 24),
+            const SizedBox(height: 26),
+            const SectionHeader(title: 'Details'),
+            _details(context),
+            const SizedBox(height: 26),
+            const SectionHeader(title: 'Danger zone'),
             _dangerZone(context),
           ],
         ),
@@ -40,183 +48,180 @@ class DeviceDetailScreen extends StatelessWidget {
   }
 
   Widget _header(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                device.isOnline
-                    ? Icons.desktop_windows
-                    : Icons.desktop_access_disabled,
-                size: 28,
-                color: device.isOnline ? scheme.primary : scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(device.name, style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  StatusPill(label: _statusLabel(), color: _statusColor(scheme)),
+    final scheme = context.scheme;
+    final status = deviceStatusOf(context, device);
+    return GlassCard(
+      accent: status.color,
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  status.color.withValues(alpha: 0.26),
+                  status.color.withValues(alpha: 0.08),
                 ],
               ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: status.color.withValues(alpha: 0.3)),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _details(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          children: [
-            _row(context, 'Platform', device.platform),
-            _row(
-              context,
-              'Last seen',
-              device.lastSeenAt?.toLocal().toString() ?? 'Never',
+            child: Icon(
+              deviceIconOf(device),
+              size: 30,
+              color: device.isOnline ? status.color : scheme.onSurfaceVariant,
             ),
-            if (device.pairedAt != null)
-              _row(context, 'Paired at', device.pairedAt!.toLocal().toString()),
-          ],
-        ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(device.name, style: context.texts.titleLarge),
+                const SizedBox(height: 8),
+                StatusPill(label: status.label, color: status.color),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _actions(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            FilledButton.icon(
-              onPressed: (!device.isActive || requests.busy)
-                  ? null
-                  : () => _authorize(context, 'remote_unlock'),
-              icon: const Icon(Icons.lock_open),
-              label: Text(requests.busy ? 'Working…' : 'Unlock this PC'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: (!device.isActive || requests.busy)
-                  ? null
-                  : () => _authorize(context, 'remote_lock'),
-              icon: const Icon(Icons.lock_outline),
-              label: const Text('Lock this PC'),
-            ),
-            if (requests.error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text(
-                  requests.error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-            if (requests.stage != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+    final scheme = context.scheme;
+    final active = device.isActive;
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(18, 22, 18, 20),
+      child: Column(
+        children: [
+          if (requests.stage != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    height: 15,
+                    width: 15,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      requests.stage!,
+                      textAlign: TextAlign.center,
+                      style: context.texts.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(requests.stage!)),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            )
+          else if (requests.error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                requests.error!,
+                textAlign: TextAlign.center,
+                style: context.texts.bodySmall?.copyWith(color: scheme.error),
+              ),
+            ),
+          ActionButton(
+            label: 'Unlock this PC',
+            icon: Icons.lock_open_rounded,
+            busy: requests.busy,
+            enabled: active,
+            onPressed: () => _authorize(context, 'remote_unlock'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: (!active || requests.busy)
+                ? null
+                : () => _authorize(context, 'remote_lock'),
+            icon: const Icon(Icons.lock_outline_rounded, size: 20),
+            label: const Text('Lock this PC'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _details(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+      child: Column(
+        children: [
+          _row(context, 'Platform', device.platform),
+          const Divider(height: 1),
+          _row(
+            context,
+            'Last seen',
+            device.lastSeenAt?.toLocal().toString() ?? 'Never',
+          ),
+          if (device.pairedAt != null) ...[
+            const Divider(height: 1),
+            _row(context, 'Paired at', device.pairedAt!.toLocal().toString()),
           ],
-        ),
+        ],
       ),
     );
   }
 
   Widget _dangerZone(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Danger zone',
-              style: Theme.of(context).textTheme.titleSmall,
+    final scheme = context.scheme;
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            device.isRevoked
+                ? 'This PC is revoked and can be removed permanently.'
+                : 'Revoking blocks this PC from receiving unlock requests.',
+            style: context.texts.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 4),
-            Text(
-              device.isRevoked
-                  ? 'This PC is revoked and can be removed permanently.'
-                  : 'Revoking blocks this PC from receiving unlock requests.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            if (device.isRevoked)
-              FilledButton.icon(
-                onPressed: devices.busy ? null : () => _delete(context),
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Delete this PC'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: scheme.error,
-                  foregroundColor: scheme.onError,
-                ),
-              )
-            else
-              OutlinedButton.icon(
-                onPressed: devices.busy ? null : () => _revoke(context),
-                icon: const Icon(Icons.block),
-                label: const Text('Revoke access'),
-                style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+          ),
+          const SizedBox(height: 14),
+          if (device.isRevoked)
+            FilledButton.icon(
+              onPressed: devices.busy ? null : () => _delete(context),
+              icon: const Icon(Icons.delete_outline_rounded),
+              label: const Text('Delete this PC'),
+              style: FilledButton.styleFrom(
+                backgroundColor: scheme.error,
+                foregroundColor: scheme.onError,
               ),
-          ],
-        ),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: devices.busy ? null : () => _revoke(context),
+              icon: const Icon(Icons.block_rounded),
+              label: const Text('Revoke access'),
+              style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+            ),
+        ],
       ),
     );
   }
 
-  String _statusLabel() {
-    if (device.isRevoked) return 'Revoked';
-    if (device.isOnline) return 'Online';
-    if (device.isPending) return 'Awaiting pairing';
-    return 'Paired';
-  }
-
-  Color _statusColor(ColorScheme scheme) {
-    if (device.isRevoked) return scheme.error;
-    if (device.isOnline) return const Color(0xFF2E9E5B);
-    if (device.isPending) return scheme.tertiary;
-    return scheme.primary;
-  }
-
   Widget _row(BuildContext context, String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10),
+    padding: const EdgeInsets.symmetric(vertical: 14),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 100,
+          width: 96,
           child: Text(
             label,
-            style: Theme.of(context).textTheme.labelLarge,
+            style: context.texts.labelLarge?.copyWith(
+              color: context.scheme.onSurfaceVariant,
+            ),
           ),
         ),
         Expanded(child: Text(value)),
@@ -225,40 +230,12 @@ class DeviceDetailScreen extends StatelessWidget {
   );
 
   Future<void> _authorize(BuildContext context, String operation) async {
-    final outcome = await requests.authorize(pcId: device.id, operation: operation);
-    if (!context.mounted) return;
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(outcome.succeeded ? 'Done' : 'Not completed'),
-        content: Text(_outcomeMessage(outcome, operation)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+    final outcome = await requests.authorize(
+      pcId: device.id,
+      operation: operation,
     );
-  }
-
-  String _outcomeMessage(AuthorizationOutcome outcome, String operation) {
-    final reason = outcome.request?.ackReason;
-    switch (outcome.status) {
-      case 'verified':
-        if (reason == 'already_unlocked') return 'This PC is already unlocked.';
-        if (reason == 'already_locked') return 'This PC is already locked.';
-        return operation == 'remote_lock'
-            ? 'The PC was locked.'
-            : 'The PC was unlocked.';
-      case 'rejected':
-        if (reason == 'lock_failed') return 'The PC could not be locked.';
-        return 'The PC rejected the request.${reason != null ? ' ($reason)' : ''}';
-      case 'expired':
-        return 'The request expired before the PC responded.';
-      default:
-        return outcome.message ?? 'Authorization could not be completed.';
-    }
+    if (!context.mounted) return;
+    await showAuthorizationResult(context, outcome, operation);
   }
 
   Future<void> _revoke(BuildContext context) async {

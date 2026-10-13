@@ -8,7 +8,10 @@ so a pairing that landed later was missed until the app was restarted.
 
 from __future__ import annotations
 
+import sys
+
 from biounlock_agent.tray import (
+    _relaunch_environment,
     asset_path,
     create_icon_image,
     render_qr_image,
@@ -129,4 +132,37 @@ def test_watch_for_pairing_survives_transient_errors():
 
     assert events == ["paired"]
     assert agent.calls == 2
+
+
+def test_relaunch_environment_drops_pyinstaller_handoff(monkeypatch):
+    """The replacement tray must not reuse this process's extraction folder.
+
+    After pairing the app restarts itself. It used to inherit PyInstaller's
+    ``_PYI_*`` handoff variables, so the child re-opened this process's ``_MEI``
+    folder -- which the parent deletes as it exits -- and the replacement died
+    with a misleading "No module named ..." or "DLL load failed" error.
+    """
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", r"C:\Temp\_MEI123\BioUnlock.exe")
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", r"C:\Temp\_MEI123")
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setenv("USERNAME", "tester")
+
+    env = _relaunch_environment()
+
+    assert "_PYI_ARCHIVE_FILE" not in env
+    assert "_PYI_APPLICATION_HOME_DIR" not in env
+    assert "_PYI_PARENT_PROCESS_LEVEL" not in env
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert env["USERNAME"] == "tester"
+
+
+def test_relaunch_environment_is_untouched_from_source(monkeypatch):
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", r"C:\Temp\_MEI123\BioUnlock.exe")
+
+    env = _relaunch_environment()
+
+    assert env["_PYI_ARCHIVE_FILE"] == r"C:\Temp\_MEI123\BioUnlock.exe"
+    assert "PYINSTALLER_RESET_ENVIRONMENT" not in env
 

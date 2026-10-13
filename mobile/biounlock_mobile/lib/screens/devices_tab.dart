@@ -4,7 +4,11 @@ import 'package:provider/provider.dart';
 import '../models/device.dart';
 import '../state/devices_controller.dart';
 import '../state/requests_controller.dart';
+import '../theme.dart';
+import '../widgets/device_status.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/section_header.dart';
 import '../widgets/status_pill.dart';
 import 'device_detail_screen.dart';
 import 'scan_pairing_screen.dart';
@@ -16,13 +20,14 @@ class DevicesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<DevicesController>();
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
         onRefresh: controller.load,
         child: _buildBody(context, controller),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _scan(context),
-        icon: const Icon(Icons.qr_code_scanner),
+        icon: const Icon(Icons.qr_code_scanner_rounded),
         label: const Text('Pair PC'),
       ),
     );
@@ -32,42 +37,57 @@ class DevicesTab extends StatelessWidget {
     if (controller.busy && controller.devices.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
+
     if (controller.devices.isEmpty) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 112),
         children: [
-          const SizedBox(height: 80),
           EmptyState(
-            icon: Icons.computer,
+            icon: Icons.desktop_windows_rounded,
             title: 'No PCs yet',
             message:
-                'Run the BioUnlock agent on your PC and scan its QR code to link it.',
-            action: controller.error == null
-                ? null
-                : Text(
-                    controller.error!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
+                'Run the BioUnlock agent on your PC and scan its QR code to '
+                'link it to this phone.',
+            action: FilledButton.icon(
+              onPressed: () => _scan(context),
+              icon: const Icon(Icons.qr_code_scanner_rounded),
+              label: const Text('Pair a PC'),
+            ),
           ),
+          if (controller.error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              controller.error!,
+              textAlign: TextAlign.center,
+              style: context.texts.bodySmall?.copyWith(
+                color: context.scheme.error,
+              ),
+            ),
+          ],
         ],
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: controller.devices.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, i) {
-        final device = controller.devices[i];
-        return _DeviceCard(
-          device: device,
-          onOpen: () => _open(context, controller, device),
-          onDelete: device.isRevoked
-              ? () => _confirmDelete(context, controller, device)
-              : null,
-        );
-      },
+
+    final devices = controller.devices;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+      children: [
+        _Overview(devices: devices),
+        const SizedBox(height: 26),
+        SectionHeader(title: 'Your PCs', caption: '${devices.length}'),
+        for (final device in devices) ...[
+          const SizedBox(height: 14),
+          _PcCard(
+            device: device,
+            onOpen: () => _open(context, controller, device),
+            onDelete: device.isRevoked
+                ? () => _confirmDelete(context, controller, device)
+                : null,
+          ),
+        ],
+      ],
     );
   }
 
@@ -144,12 +164,82 @@ class DevicesTab extends StatelessWidget {
   }
 }
 
-class _DeviceCard extends StatelessWidget {
-  const _DeviceCard({
-    required this.device,
-    required this.onOpen,
-    this.onDelete,
-  });
+class _Overview extends StatelessWidget {
+  const _Overview({required this.devices});
+
+  final List<Device> devices;
+
+  @override
+  Widget build(BuildContext context) {
+    final online = devices.where((d) => d.isOnline && d.isActive).length;
+    final pending = devices.where((d) => d.isPending).length;
+    return GlassCard(
+      accent: context.scheme.primary,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Row(
+        children: [
+          _Stat(value: '${devices.length}', label: 'PCs'),
+          const _StatDivider(),
+          _Stat(
+            value: '$online',
+            label: 'Online',
+            tint: context.tokens.success,
+          ),
+          const _StatDivider(),
+          _Stat(
+            value: '$pending',
+            label: 'Pending',
+            tint: context.scheme.tertiary,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.value, required this.label, this.tint});
+
+  final String value;
+  final String label;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: context.texts.headlineSmall?.copyWith(
+              color: tint ?? scheme.onSurface,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: context.texts.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatDivider extends StatelessWidget {
+  const _StatDivider();
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 1, height: 34, color: context.scheme.outlineVariant);
+}
+
+class _PcCard extends StatelessWidget {
+  const _PcCard({required this.device, required this.onOpen, this.onDelete});
 
   final Device device;
   final VoidCallback onOpen;
@@ -157,98 +247,86 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final status = _status(theme, device);
+    final scheme = context.scheme;
+    final status = deviceStatusOf(context, device);
 
-    return Card(
-      child: InkWell(
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(14),
+    return GlassCard(
+      onTap: onOpen,
+      accent: status.color,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          _DeviceIcon(device: device, size: 48),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  device.name,
+                  style: context.texts.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                child: Icon(
-                  device.isOnline
-                      ? Icons.desktop_windows
-                      : Icons.desktop_access_disabled,
-                  color: device.isOnline
-                      ? scheme.primary
-                      : scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 7),
+                Row(
                   children: [
-                    Text(
-                      device.name,
-                      style: theme.textTheme.titleMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        StatusPill(label: status.label, color: status.color),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            device.platform,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    StatusPill(label: status.label, color: status.color),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        device.platform,
+                        style: context.texts.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
                         ),
-                      ],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              if (onDelete != null)
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Remove PC',
-                  color: scheme.error,
-                  onPressed: onDelete,
-                )
-              else
-                Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 6),
+          if (onDelete != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Remove PC',
+              color: scheme.error,
+              onPressed: onDelete,
+            )
+          else
+            Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+        ],
       ),
     );
   }
-
-  _Status _status(ThemeData theme, Device device) {
-    if (device.isRevoked) {
-      return _Status('Revoked', theme.colorScheme.error);
-    }
-    if (device.isOnline) {
-      return const _Status('Online', Color(0xFF2E9E5B));
-    }
-    if (device.isPending) {
-      return _Status('Awaiting pairing', theme.colorScheme.tertiary);
-    }
-    return _Status('Paired', theme.colorScheme.primary);
-  }
 }
 
-class _Status {
-  const _Status(this.label, this.color);
+class _DeviceIcon extends StatelessWidget {
+  const _DeviceIcon({required this.device, required this.size});
 
-  final String label;
-  final Color color;
+  final Device device;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final status = deviceStatusOf(context, device);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: status.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(size * 0.32),
+        border: Border.all(color: status.color.withValues(alpha: 0.28)),
+      ),
+      child: Icon(
+        deviceIconOf(device),
+        size: size * 0.5,
+        color: device.isOnline ? status.color : scheme.onSurfaceVariant,
+      ),
+    );
+  }
 }

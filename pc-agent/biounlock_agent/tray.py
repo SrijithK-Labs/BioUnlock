@@ -4,8 +4,10 @@ The tray app is the recommended way to run BioUnlock on Windows. It:
 
 * lives in the notification area (system tray) and starts the agent in the
   background as soon as the PC is linked;
-* provides a small settings window (tkinter) to enter the server URL, link this
-  PC (pairing QR/code), and store the Windows credential used for unlocking;
+* provides a small settings window that mirrors the phone app's look and feel
+  (flat surfaces, one blue accent, card layout) to enter the server URL, link
+  this PC (pairing QR/code), and store the Windows credential used for
+  unlocking;
 * can start automatically when the user logs in.
 
 The heavy lifting is unchanged: :class:`~biounlock_agent.agent.Agent` verifies
@@ -23,7 +25,9 @@ import subprocess
 import sys
 import threading
 import time
+import tkinter as tk
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import pystray
@@ -46,9 +50,174 @@ AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 AUTOSTART_VALUE_NAME = "BioUnlock"
 INSTANCE_MUTEX_NAME = "BioUnlockTray"
 ICON_SIZE = 64
+THEME_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 
 # Kept alive for the whole process so Windows does not release the lock early.
 _instance_mutex: object | None = None
+
+
+# --- theme ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Palette:
+    """Flat colour set shared with the phone app (one accent, neutral surfaces)."""
+
+    bg: str
+    card: str
+    border: str
+    subtle: str
+    text: str
+    muted: str
+    accent: str
+    on_accent: str
+    accent_hover: str
+    success: str
+    warning: str
+    danger: str
+    ok_bg: str
+    warn_bg: str
+    err_bg: str
+    scroll_thumb: str
+    scroll_thumb_active: str
+
+
+def apps_use_light_theme() -> bool:
+    """Whether Windows is set to light app mode (defaults to light)."""
+    if winreg is None:  # pragma: no cover - non-Windows
+        return True
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, THEME_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return bool(value)
+    except OSError:
+        return True
+
+
+def palette_for(light: bool) -> Palette:
+    """Return the flat palette for the given Windows app theme."""
+    if light:
+        return Palette(
+            bg="#F4F5F7",
+            card="#FFFFFF",
+            border="#E3E6EB",
+            subtle="#EEF1F5",
+            text="#1A1D20",
+            muted="#5B6470",
+            accent="#2F6FEB",
+            on_accent="#FFFFFF",
+            accent_hover="#255BC7",
+            success="#1E9E62",
+            warning="#B7791F",
+            danger="#D64545",
+            ok_bg="#E3F5EC",
+            warn_bg="#FBF1DD",
+            err_bg="#FBE9E9",
+            scroll_thumb="#CDD3DB",
+            scroll_thumb_active="#9AA4B2",
+        )
+    return Palette(
+        bg="#0F1113",
+        card="#1A1D20",
+        border="#2A2F35",
+        subtle="#22262B",
+        text="#F2F4F7",
+        muted="#9AA4B2",
+        accent="#6E9DF7",
+        on_accent="#0B0D10",
+        accent_hover="#8AAFFA",
+        success="#4ADE80",
+        warning="#FACC15",
+        danger="#F87171",
+        ok_bg="#12301F",
+        warn_bg="#2E2711",
+        err_bg="#331A1A",
+        scroll_thumb="#333A42",
+        scroll_thumb_active="#4A525C",
+    )
+
+
+class FlatScrollbar(tk.Canvas):
+    """A slim, arrow-free scrollbar drawn to match the flat card theme.
+
+    Behaves like a normal scrollbar: ``set`` is wired to the scrolled widget's
+    ``yscrollcommand``, and the thumb can be dragged or the track clicked to page.
+    """
+
+    def __init__(self, master, command, *, palette: Palette, width: int = 10, **kwargs) -> None:
+        super().__init__(master, width=width, highlightthickness=0, bd=0, bg=palette.bg, **kwargs)
+        self._command = command
+        self._p = palette
+        self._first = 0.0
+        self._last = 1.0
+        self._thumb: tuple[float, float] | None = None
+        self._drag_origin: float | None = None
+        self._drag_first = 0.0
+        self.bind("<Configure>", lambda _e: self._redraw())
+        self.bind("<Button-1>", self._on_press)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.bind("<ButtonRelease-1>", lambda _e: self._end_drag())
+
+    def set(self, first, last) -> None:  # noqa: A003 - matches Tk's scrollbar contract
+        self._first, self._last = float(first), float(last)
+        self._redraw()
+
+    def _round_rect(self, x0, y0, x1, y1, r, **kwargs):
+        points = [
+            x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r,
+            x1, y1 - r, x1, y1, x1 - r, y1, x0 + r, y1,
+            x0, y1, x0, y1 - r, x0, y0 + r, x0, y0,
+        ]
+        return self.create_polygon(points, smooth=True, **kwargs)
+
+    def _redraw(self) -> None:
+        self.delete("all")
+        height = self.winfo_height()
+        width = self.winfo_width()
+        if height <= 1 or width <= 1:
+            return
+        if self._first <= 0.0 and self._last >= 1.0:
+            self._thumb = None
+            return
+        pad = 2
+        track_top = pad
+        track_height = (height - 2 * pad) or 1
+        thumb_top = track_top + track_height * self._first
+        thumb_bottom = track_top + track_height * self._last
+        min_height = min(28, track_height)
+        if thumb_bottom - thumb_top < min_height:
+            thumb_bottom = thumb_top + min_height
+            if thumb_bottom > height - pad:
+                thumb_bottom = height - pad
+                thumb_top = thumb_bottom - min_height
+        self._thumb = (thumb_top, thumb_bottom)
+        fill = self._p.scroll_thumb_active if self._drag_origin is not None else self._p.scroll_thumb
+        self._round_rect(pad, thumb_top, width - pad, thumb_bottom, (width - 2 * pad) / 2, fill=fill, outline="")
+
+    def _on_press(self, event) -> None:
+        if self._thumb is None:
+            return
+        top, bottom = self._thumb
+        if top <= event.y <= bottom:
+            self._drag_origin = event.y
+            self._drag_first = self._first
+            self._redraw()
+        else:
+            step = 0.1 if event.y > bottom else -0.1
+            self._command("moveto", max(0.0, min(1.0, self._first + step)))
+
+    def _on_drag(self, event) -> None:
+        if self._drag_origin is None:
+            return
+        height = self.winfo_height()
+        track_height = (height - 4) or 1
+        fraction = (event.y - self._drag_origin) / track_height
+        max_first = max(0.0, 1.0 - (self._last - self._first))
+        self._command("moveto", max(0.0, min(max_first, self._drag_first + fraction)))
+
+    def _end_drag(self) -> None:
+        self._drag_origin = None
+        self._redraw()
 
 
 def render_qr_image(payload: str) -> Image.Image | None:
@@ -152,6 +321,25 @@ def _relaunch_working_dir() -> str:
     if getattr(sys, "frozen", False):  # pragma: no cover - packaged build
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _relaunch_environment() -> dict[str, str]:
+    """Environment for the replacement copy of a packaged app.
+
+    PyInstaller's onefile bootloader tells its child which extraction folder to
+    reuse through ``_PYI_*`` variables. This process deletes that folder as it
+    exits, so a child that inherits them imports from a directory that is
+    vanishing underneath it and dies with a misleading ``No module named ...``
+    or ``DLL load failed``. Dropping them makes the replacement extract its own
+    files into a fresh folder instead.
+    """
+    env = dict(os.environ)
+    if not getattr(sys, "frozen", False):  # pragma: no cover - source run
+        return env
+    for key in [key for key in env if key.startswith("_PYI_")]:
+        del env[key]
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
 
 
 # --- autostart at login ---------------------------------------------------
@@ -319,26 +507,45 @@ class AgentRunner:
 
 
 class TrayApp:
-    """A tray icon plus an on-demand tkinter settings window."""
+    """A tray icon plus an on-demand settings window that matches the phone app."""
 
     def __init__(self) -> None:
         self.agent = Agent()
         self.runner = AgentRunner(self.agent)
         self._closing = False
+        self._p = palette_for(apps_use_light_theme())
 
         self._ui_queue: queue.Queue = queue.Queue()
         self._ui_ready = threading.Event()
         self._root = None
         self._settings = None
+
+        # Form state.
         self._url_var = None
         self._name_var = None
-        self._status_var = None
+        self._token_var = None
+        self._autostart_var = None
+        self._hint_var = None
+
+        # Widgets refreshed live (kept as attributes so they are updated in place).
+        self._link_pill = None
+        self._agent_pill = None
+        self._meta_label = None
+        self._error_label = None
         self._link_button = None
+        self._unlink_button = None
+        self._start_button = None
+        self._stop_button = None
+        self._pairing_pill = None
+        self._pairing_code = None
+        self._pairing_hint = None
         self._qr_label = None
-        self._pairing_label = None
+        self._credential_pill = None
+
         self._photo = None
-        self._pairing_thread: threading.Thread | None = None
         self._logo_photo = None
+        self._window_icon = None
+        self._pairing_thread: threading.Thread | None = None
 
         self.icon = pystray.Icon(
             "BioUnlock", create_icon_image(), "BioUnlock", menu=self._build_menu()
@@ -351,14 +558,31 @@ class TrayApp:
     # --- tkinter plumbing (all UI work happens on the UI thread) ----------
 
     def _ui_main(self) -> None:
-        import tkinter as tk
-
         self._root = tk.Tk()
         self._root.withdraw()
         self._root.title("BioUnlock")
+        self._apply_icon(self._root)
         self._ui_ready.set()
         self._root.after(50, self._pump)
         self._root.mainloop()
+
+    def _apply_icon(self, window) -> None:
+        """Give a window BioUnlock's icon (title bar and taskbar where relevant)."""
+        ico = asset_path("BioUnlock.ico")
+        if ico is not None and os.name == "nt":
+            try:
+                window.iconbitmap(default=str(ico))
+                return
+            except tk.TclError:
+                pass
+        logo = asset_path("logo.png")
+        if logo is not None:
+            try:
+                image = Image.open(logo).convert("RGBA").resize((64, 64), Image.LANCZOS)
+                self._window_icon = ImageTk.PhotoImage(image)
+                window.iconphoto(True, self._window_icon)
+            except Exception:  # noqa: BLE001 - icon is cosmetic
+                pass
 
     def _pump(self) -> None:
         while True:
@@ -369,7 +593,7 @@ class TrayApp:
             try:
                 callback()
             except Exception:  # noqa: BLE001 - one bad callback must not kill the pump
-                pass
+                logger.exception("UI callback failed")
         if self._root is not None:
             self._root.after(50, self._pump)
 
@@ -413,7 +637,15 @@ class TrayApp:
 
     def _on_toggle_autostart(self, icon, _item) -> None:
         set_autostart(not is_autostart_enabled())
+        if self._autostart_var is not None:
+            self._autostart_var.set(is_autostart_enabled())
         icon.update_menu()
+
+    def _on_autostart_changed(self) -> None:
+        if self._autostart_var is None:
+            return
+        set_autostart(bool(self._autostart_var.get()))
+        self.icon.update_menu()
 
     def _on_open_logs(self, _icon, _item) -> None:
         home = default_home()
@@ -434,12 +666,112 @@ class TrayApp:
         if self._root is not None:
             self._root.quit()
 
+    # --- reusable flat widgets -------------------------------------------
+
+    def _card(self, parent) -> tk.Frame:
+        """A flat surface with a hairline border, returning its content frame."""
+        p = self._p
+        outer = tk.Frame(parent, bg=p.border)
+        outer.pack(fill="x", pady=(0, 12))
+        inner = tk.Frame(outer, bg=p.card)
+        inner.pack(fill="both", expand=True, padx=1, pady=1)
+        content = tk.Frame(inner, bg=p.card)
+        content.pack(fill="both", expand=True, padx=16, pady=14)
+        return content
+
+    def _card_title(self, parent, text: str) -> tk.Label:
+        p = self._p
+        label = tk.Label(
+            parent,
+            text=text.upper(),
+            font=("Segoe UI", 8, "bold"),
+            fg=p.muted,
+            bg=p.card,
+            anchor="w",
+        )
+        label.pack(fill="x", pady=(0, 10))
+        return label
+
+    def _pill(self, parent, text: str, tone: str = "neutral") -> tk.Label:
+        bg, fg = self._pill_colors(tone)
+        return tk.Label(
+            parent,
+            text=f"  {text}  ",
+            font=("Segoe UI", 9, "bold"),
+            fg=fg,
+            bg=bg,
+            padx=8,
+            pady=3,
+        )
+
+    def _pill_colors(self, tone: str) -> tuple[str, str]:
+        p = self._p
+        if tone == "ok":
+            return p.ok_bg, p.success
+        if tone == "warn":
+            return p.warn_bg, p.warning
+        if tone == "err":
+            return p.err_bg, p.danger
+        return p.subtle, p.muted
+
+    def _set_pill(self, label: tk.Label | None, text: str, tone: str) -> None:
+        if label is None:
+            return
+        bg, fg = self._pill_colors(tone)
+        label.configure(text=f"  {text}  ", bg=bg, fg=fg)
+
+    def _field(self, parent, label: str, var: tk.StringVar, *, secret: bool = False, helper: str | None = None) -> tk.Entry:
+        p = self._p
+        tk.Label(parent, text=label, font=("Segoe UI", 9), fg=p.muted, bg=p.card, anchor="w").pack(fill="x")
+        entry = tk.Entry(
+            parent,
+            textvariable=var,
+            font=("Segoe UI", 10),
+            fg=p.text,
+            bg=p.subtle,
+            insertbackground=p.text,
+            relief="flat",
+            show="\u2022" if secret else "",
+            highlightthickness=1,
+            highlightbackground=p.border,
+            highlightcolor=p.accent,
+        )
+        entry.pack(fill="x", ipady=6, pady=(3, 0 if helper else 12))
+        if helper:
+            tk.Label(
+                parent, text=helper, font=("Segoe UI", 8), fg=p.muted, bg=p.card,
+                anchor="w", justify="left", wraplength=360,
+            ).pack(fill="x", pady=(4, 12))
+        return entry
+
+    def _button(self, parent, text: str, command, *, kind: str = "accent") -> tk.Button:
+        p = self._p
+        if kind == "accent":
+            bg, fg, hover, weight = p.accent, p.on_accent, p.accent_hover, "bold"
+        else:
+            bg, fg, hover, weight = p.subtle, p.text, p.border, "normal"
+        button = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            font=("Segoe UI", 10, weight),
+            bg=bg,
+            fg=fg,
+            activebackground=hover,
+            activeforeground=fg,
+            disabledforeground=p.muted,
+            relief="flat",
+            cursor="hand2",
+            padx=12,
+            pady=8,
+            borderwidth=0,
+            highlightthickness=0,
+        )
+        return button
+
     # --- settings window --------------------------------------------------
 
     def _show_settings(self) -> None:
-        import tkinter as tk
-        from tkinter import ttk
-
         if self._settings is not None and self._settings.winfo_exists():
             self._settings.deiconify()
             self._settings.lift()
@@ -450,71 +782,182 @@ class TrayApp:
         window = tk.Toplevel(self._root)
         self._settings = window
         window.title("BioUnlock")
-        window.geometry("460x640")
+        window.geometry("480x760")
+        window.minsize(420, 560)
+        window.configure(bg=self._p.bg)
         window.protocol("WM_DELETE_WINDOW", self._hide_settings)
+        self._apply_icon(window)
+        self._build_settings(window)
+        self._refresh_status()
+        window.after(1000, self._tick)
 
-        frame = ttk.Frame(window, padding=16)
-        frame.pack(fill="both", expand=True)
+    def _build_settings(self, window: tk.Toplevel) -> None:
+        p = self._p
 
-        logo = asset_path("logo.png")
-        if logo is not None:
-            try:
-                logo_image = Image.open(logo).convert("RGBA")
-                logo_image.thumbnail((56, 56), Image.LANCZOS)
-                self._logo_photo = ImageTk.PhotoImage(logo_image)
-                ttk.Label(frame, image=self._logo_photo).pack(anchor="w", pady=(0, 6))
-            except Exception:  # noqa: BLE001 - the title alone is enough
-                self._logo_photo = None
+        header = tk.Frame(window, bg=p.bg)
+        header.pack(fill="x", padx=20, pady=(18, 10))
+        self._add_logo(header, 48)
+        title_box = tk.Frame(header, bg=p.bg)
+        title_box.pack(side="left", fill="x", expand=True)
+        tk.Label(title_box, text="BioUnlock", font=("Segoe UI", 17, "bold"), fg=p.text, bg=p.bg, anchor="w").pack(
+            fill="x"
+        )
+        tk.Label(
+            title_box,
+            text="Unlock this PC from your phone.",
+            font=("Segoe UI", 9),
+            fg=p.muted,
+            bg=p.bg,
+            anchor="w",
+        ).pack(fill="x")
 
-        ttk.Label(frame, text="BioUnlock", font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        ttk.Label(
-            frame,
-            text="Link this PC to your own BioUnlock server, then approve unlocks "
-            "from your phone.",
-            wraplength=400,
-            justify="left",
-        ).pack(anchor="w", pady=(2, 12))
+        body_wrap = tk.Frame(window, bg=p.bg)
+        body_wrap.pack(fill="both", expand=True)
+        canvas = tk.Canvas(body_wrap, bg=p.bg, highlightthickness=0, bd=0)
+        scrollbar = FlatScrollbar(body_wrap, canvas.yview, palette=p, width=10)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y", padx=(6, 0))
+        canvas.pack(side="left", fill="both", expand=True)
+        body = tk.Frame(canvas, bg=p.bg)
+        window_id = canvas.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window_id, width=e.width))
+        window.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
 
+        pad = tk.Frame(body, bg=p.bg)
+        pad.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        # Status summary.
+        status_card = self._card(pad)
+        row = tk.Frame(status_card, bg=p.card)
+        row.pack(fill="x")
+        self._link_pill = self._pill(row, "Not linked", "neutral")
+        self._link_pill.pack(side="left")
+        self._agent_pill = self._pill(row, "Agent stopped", "neutral")
+        self._agent_pill.pack(side="right")
+        self._meta_label = tk.Label(
+            status_card, text="", font=("Segoe UI", 9), fg=p.muted, bg=p.card,
+            anchor="w", justify="left", wraplength=380,
+        )
+        self._meta_label.pack(fill="x", pady=(10, 0))
+        self._error_label = tk.Label(
+            status_card, text="", font=("Segoe UI", 9), fg=p.danger, bg=p.card,
+            anchor="w", justify="left", wraplength=380,
+        )
+        self._error_label.pack(fill="x", pady=(6, 0))
+
+        # Server + linking.
+        server_card = self._card(pad)
+        self._card_title(server_card, "Server")
         self._url_var = tk.StringVar(value=self.agent.config.server_url or "")
         self._name_var = tk.StringVar(value=self.agent.config.device_name or "")
         self._token_var = tk.StringVar()
-        ttk.Label(frame, text="Server URL").pack(anchor="w")
-        ttk.Entry(frame, textvariable=self._url_var).pack(fill="x", pady=(0, 8))
-        ttk.Label(frame, text="PC name").pack(anchor="w")
-        ttk.Entry(frame, textvariable=self._name_var).pack(fill="x", pady=(0, 8))
-        ttk.Label(frame, text="API token").pack(anchor="w")
-        ttk.Entry(frame, textvariable=self._token_var, show="\u2022").pack(fill="x", pady=(0, 12))
-
-        self._link_button = ttk.Button(frame, text="Link this PC", command=self._on_link)
-        self._link_button.pack(fill="x")
-
-        self._pairing_label = ttk.Label(frame, text="", wraplength=400, justify="left")
-        self._pairing_label.pack(anchor="w", pady=(10, 4))
-        self._qr_label = ttk.Label(frame)
-        self._qr_label.pack()
-
-        password_button = ttk.Button(
-            frame, text="Set Windows password\u2026", command=self._open_password_dialog
+        self._field(server_card, "Server URL", self._url_var)
+        self._field(
+            server_card,
+            "API key",
+            self._token_var,
+            secret=True,
+            helper="Required once to link this PC. Stored locally and reused for re-links.",
         )
-        password_button.pack(fill="x", pady=(12, 0))
+        self._field(server_card, "PC name", self._name_var)
+        self._link_button = self._button(server_card, "Link this PC", self._on_link, kind="accent")
+        self._link_button.pack(fill="x", pady=(2, 0))
+        self._unlink_button = self._button(server_card, "Unlink this PC", self._unlink, kind="secondary")
+        self._unlink_button.pack(fill="x", pady=(8, 0))
 
-        buttons = ttk.Frame(frame)
-        buttons.pack(fill="x", pady=(8, 0))
-        ttk.Button(buttons, text="Start agent", command=self._start_agent).pack(
-            side="left", expand=True, fill="x"
+        # Pairing.
+        pairing_card = self._card(pad)
+        self._card_title(pairing_card, "Pairing")
+        self._pairing_pill = self._pill(pairing_card, "Not started", "neutral")
+        self._pairing_pill.pack(anchor="w")
+        self._qr_label = tk.Label(pairing_card, bg=p.card)
+        self._qr_label.pack(pady=(10, 4))
+        self._pairing_code = tk.Label(
+            pairing_card, text="", font=("Consolas", 15, "bold"), fg=p.text, bg=p.card, anchor="w"
         )
-        ttk.Button(buttons, text="Stop agent", command=self._stop_agent).pack(
-            side="left", expand=True, fill="x", padx=(6, 0)
+        self._pairing_code.pack(fill="x")
+        self._pairing_hint = tk.Label(
+            pairing_card, text="", font=("Segoe UI", 9), fg=p.muted, bg=p.card,
+            anchor="w", justify="left", wraplength=380,
         )
-        ttk.Button(frame, text="Unlink", command=self._unlink).pack(fill="x", pady=(6, 0))
+        self._pairing_hint.pack(fill="x", pady=(6, 0))
 
-        self._status_var = tk.StringVar(value="")
-        ttk.Label(frame, textvariable=self._status_var, wraplength=400, justify="left").pack(
-            anchor="w", pady=(12, 0)
+        # Windows credential.
+        cred_card = self._card(pad)
+        self._card_title(cred_card, "Windows password")
+        self._credential_pill = self._pill(cred_card, "Not set", "warn")
+        self._credential_pill.pack(anchor="w")
+        tk.Label(
+            cred_card,
+            text="Stored locally (DPAPI-protected) and only used by the Windows "
+            "sign-in screen. It is never sent to the server.",
+            font=("Segoe UI", 9),
+            fg=p.muted,
+            bg=p.card,
+            anchor="w",
+            justify="left",
+            wraplength=380,
+        ).pack(fill="x", pady=(10, 10))
+        self._button(cred_card, "Set Windows password\u2026", self._open_password_dialog, kind="secondary").pack(
+            fill="x"
         )
 
-        self._refresh_status()
-        window.after(1000, self._tick)
+        # Agent controls.
+        agent_card = self._card(pad)
+        self._card_title(agent_card, "Agent")
+        agent_row = tk.Frame(agent_card, bg=p.card)
+        agent_row.pack(fill="x")
+        self._start_button = self._button(agent_row, "Start", self._start_agent, kind="accent")
+        self._start_button.pack(side="left", fill="x", expand=True)
+        self._stop_button = self._button(agent_row, "Stop", self._stop_agent, kind="secondary")
+        self._stop_button.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        self._autostart_var = tk.BooleanVar(value=is_autostart_enabled())
+        tk.Checkbutton(
+            agent_card,
+            text="Start automatically at login",
+            variable=self._autostart_var,
+            command=self._on_autostart_changed,
+            font=("Segoe UI", 9),
+            fg=p.text,
+            bg=p.card,
+            activebackground=p.card,
+            activeforeground=p.text,
+            selectcolor=p.card,
+            anchor="w",
+            cursor="hand2",
+            highlightthickness=0,
+            bd=0,
+        ).pack(fill="x", pady=(12, 0))
+
+        # Transient hint + footer.
+        self._hint_var = tk.StringVar(value="")
+        tk.Label(
+            pad, textvariable=self._hint_var, font=("Segoe UI", 9), fg=p.muted,
+            bg=p.bg, anchor="w", justify="left", wraplength=380,
+        ).pack(fill="x", pady=(0, 8))
+        logs = tk.Label(
+            pad,
+            text="Open log folder",
+            font=("Segoe UI", 9, "underline"),
+            fg=p.accent,
+            bg=p.bg,
+            cursor="hand2",
+            anchor="w",
+        )
+        logs.pack(fill="x")
+        logs.bind("<Button-1>", lambda _e: self._on_open_logs(None, None))
+
+    def _add_logo(self, parent, size: int) -> None:
+        logo = asset_path("logo.png")
+        if logo is None:
+            return
+        try:
+            image = Image.open(logo).convert("RGBA").resize((size, size), Image.LANCZOS)
+            self._logo_photo = ImageTk.PhotoImage(image)
+            tk.Label(parent, image=self._logo_photo, bg=self._p.bg).pack(side="left", padx=(0, 12))
+        except Exception:  # noqa: BLE001 - the title alone is enough
+            self._logo_photo = None
 
     def _hide_settings(self) -> None:
         if self._settings is not None:
@@ -527,25 +970,59 @@ class TrayApp:
         self._settings.after(1000, self._tick)
 
     def _set_status(self, text: str) -> None:
-        if self._status_var is not None:
-            self._status_var.set(text)
+        if self._hint_var is not None:
+            self._hint_var.set(text)
 
     def _refresh_status(self) -> None:
+        if self._link_pill is None:
+            return
         status = self.agent.status()
-        state = "running" if self.runner.is_running() else "stopped"
-        linked = "linked" if status.paired else ("enrolled, not linked" if status.enrolled else "not linked")
-        parts = [f"Agent: {state} | {linked}"]
-        if status.credential_enrolled:
-            parts.append("Windows password: stored")
+        running = self.runner.is_running()
+
+        if status.paired:
+            self._set_pill(self._link_pill, "Linked", "ok")
+        elif status.enrolled:
+            self._set_pill(self._link_pill, "Awaiting phone", "warn")
         else:
-            parts.append("Windows password: not set (needed to really unlock)")
-        if status.device_id:
-            parts.append(f"Device: {status.device_name} ({status.device_id})")
+            self._set_pill(self._link_pill, "Not linked", "neutral")
+        self._set_pill(self._agent_pill, "Agent running" if running else "Agent stopped", "ok" if running else "neutral")
+
+        bits: list[str] = []
         if status.server_url:
-            parts.append(f"Server: {status.server_url}")
-        if status.last_error:
-            parts.append(f"Last error: {status.last_error}")
-        self._set_status("\n".join(parts))
+            bits.append(status.server_url)
+        if status.connected:
+            bits.append("connected")
+        plural = "" if status.processed_count == 1 else "s"
+        bits.append(f"{status.processed_count} request{plural} handled")
+        self._meta_label.configure(text="  \u00b7  ".join(bits))
+        self._error_label.configure(text=status.last_error or "")
+
+        self._set_pill(self._credential_pill, "Stored" if status.credential_enrolled else "Not set",
+                       "ok" if status.credential_enrolled else "warn")
+
+        if status.paired:
+            self._set_pill(self._pairing_pill, "Paired", "ok")
+            self._pairing_code.configure(text="")
+            self._pairing_hint.configure(text="This PC is paired. Approve unlock requests from your phone.")
+            self._qr_label.configure(image="", text="")
+        elif status.enrolled:
+            self._set_pill(self._pairing_pill, "Waiting for the phone", "warn")
+            self._pairing_hint.configure(
+                text="Scan the code with the BioUnlock app, or enter the code below. "
+                "Waiting for the phone to confirm\u2026"
+            )
+        else:
+            self._set_pill(self._pairing_pill, "Not started", "neutral")
+            self._pairing_code.configure(text="")
+            self._pairing_hint.configure(text="Link this PC to get a pairing code.")
+            self._qr_label.configure(image="", text="")
+
+        if status.enrolled:
+            self._unlink_button.pack(fill="x", pady=(8, 0))
+        else:
+            self._unlink_button.pack_forget()
+        self._start_button.configure(state="normal" if (status.enrolled and not running) else "disabled")
+        self._stop_button.configure(state="normal" if running else "disabled")
 
     # --- linking ----------------------------------------------------------
 
@@ -591,18 +1068,14 @@ class TrayApp:
     def _on_enrolled(self, pairing_code: str, qr_payload: str) -> None:
         if self._link_button is not None:
             self._link_button.config(state="normal")
-        if self._pairing_label is not None:
-            self._pairing_label.config(
-                text=f"Scan this code with the BioUnlock app (or enter it):\n{pairing_code}\n"
-                "Waiting for the phone to confirm\u2026"
-            )
+        if self._pairing_code is not None:
+            self._pairing_code.configure(text=pairing_code)
         self._show_qr(qr_payload)
+        self._set_status("Enrolled. Waiting for the phone to confirm\u2026")
         self._refresh_status()
 
     def _on_paired(self) -> None:
-        if self._pairing_label is not None:
-            self._pairing_label.config(text="Paired. Restarting BioUnlock\u2026")
-        self._set_status("Linked. Restarting the app to finish\u2026")
+        self._set_status("Paired. Restarting BioUnlock\u2026")
         self._restart_app()
 
     def _restart_app(self) -> None:
@@ -628,6 +1101,7 @@ class TrayApp:
             subprocess.Popen(  # noqa: S603 - fixed, self-authored command line
                 _relaunch_arguments(),
                 cwd=_relaunch_working_dir(),
+                env=_relaunch_environment(),
                 creationflags=creationflags,
                 close_fds=True,
             )
@@ -655,59 +1129,64 @@ class TrayApp:
         try:
             image = render_qr_image(payload)
         except Exception:  # noqa: BLE001
-            self._qr_label.configure(text="(Could not render QR code.)")
+            self._qr_label.configure(image="", text="(Could not render QR code.)")
             return
         if image is None:
-            self._qr_label.configure(text="(Install 'segno' to show a QR code.)")
+            self._qr_label.configure(image="", text="(Install 'segno' to show a QR code.)")
             return
         try:
             self._photo = ImageTk.PhotoImage(image)
             self._qr_label.configure(image=self._photo, text="")
         except Exception:  # noqa: BLE001
-            self._qr_label.configure(text="(Could not render QR code.)")
+            self._qr_label.configure(image="", text="(Could not render QR code.)")
 
     # --- credential / agent controls --------------------------------------
 
     def _open_password_dialog(self) -> None:
         import getpass
-        import tkinter as tk
-        from tkinter import ttk
 
+        p = self._p
         dialog = tk.Toplevel(self._root)
         dialog.title("Windows password")
-        dialog.geometry("400x280")
+        dialog.geometry("420x400")
+        dialog.configure(bg=p.bg)
         dialog.transient(self._settings)
+        self._apply_icon(dialog)
 
-        frame = ttk.Frame(dialog, padding=16)
-        frame.pack(fill="both", expand=True)
-        ttk.Label(
+        frame = tk.Frame(dialog, bg=p.bg)
+        frame.pack(fill="both", expand=True, padx=20, pady=18)
+        tk.Label(
+            frame, text="Windows sign-in password", font=("Segoe UI", 14, "bold"), fg=p.text, bg=p.bg, anchor="w"
+        ).pack(fill="x")
+        tk.Label(
             frame,
-            text="Stored locally (DPAPI-protected) and only submitted by the "
-            "Credential Provider at unlock time. It is never sent to the server.",
-            wraplength=360,
+            text="Stored locally (DPAPI-protected) and only submitted by the Windows "
+            "sign-in screen at unlock time. It is never sent to the server.",
+            font=("Segoe UI", 9),
+            fg=p.muted,
+            bg=p.bg,
+            anchor="w",
             justify="left",
-        ).pack(anchor="w", pady=(0, 10))
+            wraplength=380,
+        ).pack(fill="x", pady=(6, 14))
 
+        body = self._card(frame)
         default_user = os.environ.get("USERNAME") or getpass.getuser()
         default_domain = os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or ""
         user_var = tk.StringVar(value=default_user)
         domain_var = tk.StringVar(value=default_domain)
         password_var = tk.StringVar()
+        self._field(body, "Windows username", user_var)
+        self._field(body, "Domain / computer", domain_var)
+        self._field(body, "Windows password", password_var, secret=True)
 
-        for label, var, secret in (
-            ("Windows username", user_var, False),
-            ("Domain / computer", domain_var, False),
-            ("Windows password", password_var, True),
-        ):
-            ttk.Label(frame, text=label).pack(anchor="w")
-            ttk.Entry(frame, textvariable=var, show="*" if secret else "").pack(
-                fill="x", pady=(0, 8)
-            )
+        error_label = tk.Label(body, text="", font=("Segoe UI", 9), fg=p.danger, bg=p.card, anchor="w", justify="left", wraplength=340)
+        error_label.pack(fill="x")
 
         def save() -> None:
             password = password_var.get()
             if not password:
-                ttk.Label(frame, text="Password cannot be empty.").pack(anchor="w")
+                error_label.configure(text="Password cannot be empty.")
                 return
             credential = unlock.WindowsCredential(
                 username=user_var.get().strip(),
@@ -717,20 +1196,21 @@ class TrayApp:
             try:
                 unlock.save_windows_credential(default_home(), credential)
             except unlock.UnlockError as exc:
-                ttk.Label(frame, text=f"Could not store: {exc}").pack(anchor="w")
+                error_label.configure(text=f"Could not store: {exc}")
                 return
             password_var.set("")
             dialog.destroy()
             self._set_status("Windows password stored.")
             self._refresh_status()
 
-        ttk.Button(frame, text="Save", command=save).pack(fill="x", pady=(4, 0))
+        self._button(frame, "Save", save, kind="accent").pack(fill="x", pady=(10, 0))
 
     def _start_agent(self) -> None:
         if not self.agent.config.is_enrolled:
             self._set_status("Link this PC first.")
             return
         self.runner.start()
+        self._set_status("")
         self.icon.update_menu()
         self._refresh_status()
 
@@ -742,16 +1222,17 @@ class TrayApp:
     def _unlink(self) -> None:
         from tkinter import messagebox
 
-        if not messagebox.askyesno("BioUnlock", "Remove the local link and device key?"):
+        if not messagebox.askyesno("BioUnlock", "Remove the local link and device key from this PC?"):
             return
         self.runner.stop()
         self.agent.unenroll()
         if self._url_var is not None:
             self._url_var.set("")
-        if self._pairing_label is not None:
-            self._pairing_label.config(text="")
+        if self._pairing_code is not None:
+            self._pairing_code.configure(text="")
         if self._qr_label is not None:
-            self._qr_label.configure(image="")
+            self._qr_label.configure(image="", text="")
+        self._set_status("Unlinked from the server.")
         self.icon.update_menu()
         self._refresh_status()
 

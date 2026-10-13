@@ -3,13 +3,14 @@
 #   powershell -ExecutionPolicy Bypass -File install-agent.ps1               # packaged .exe
 #   powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource   # run from Python
 #
+# For a packaged .exe this just runs "BioUnlock.exe install", which copies the
+# app to %LOCALAPPDATA%\BioUnlock, adds it to Start-up, creates a Start Menu
+# shortcut, and (after one UAC prompt) registers the bundled Windows Credential
+# Provider. Only that provider step needs elevation.
+#
 # -FromSource installs a launcher that runs the agent with pythonw.exe instead
 # of the packaged .exe. Use it when the machine's Windows Smart App Control
 # blocks the unsigned .exe, or when you want to run straight from the repo.
-#
-# Adds the app to Start-up, creates a Start Menu shortcut, and (optionally)
-# installs the Windows Credential Provider, which *does* need an elevation
-# prompt.
 [CmdletBinding()]
 param(
     [string]$ExePath,
@@ -23,34 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
-$installDir = Join-Path $env:LOCALAPPDATA "BioUnlock"
-New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-
-if ($FromSource) {
-    $projectDir = $root
-    $pythonw = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
-    if (-not $pythonw) {
-        $python = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
-        if ($python) { $pythonw = Join-Path (Split-Path $python) "pythonw.exe" }
-    }
-    if (-not $pythonw -or -not (Test-Path -LiteralPath $pythonw)) {
-        throw "pythonw.exe was not found. Install Python 3.11+ and its dependencies first."
-    }
-    $target = Join-Path $installDir "biounlock-tray.cmd"
-    $content = @"
-@echo off
-cd /d "$projectDir"
-start "" "$pythonw" -m biounlock_agent tray
-"@
-    Set-Content -LiteralPath $target -Value $content -Encoding ASCII
-    Write-Host "Installed source launcher -> $target"
-    $runValue = "`"$target`""
-    $launchExe = $target
-    $launchArgs = @()
-    $shortcutArgs = ""
-    $shortcutWorkDir = $projectDir
-}
-else {
+if (-not $FromSource) {
     if (-not $ExePath) {
         $candidates = @(
             (Join-Path $root "dist\BioUnlock.exe"),
@@ -61,20 +35,51 @@ else {
     if (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath)) {
         throw "Could not find BioUnlock.exe. Build it with build.ps1, pass -ExePath, or use -FromSource."
     }
-    $target = Join-Path $installDir "BioUnlock.exe"
-    Get-Process -Name "BioUnlock" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 400
-    Copy-Item -LiteralPath $ExePath -Destination $target -Force
-    Write-Host "Installed agent -> $target"
-    $runValue = "`"$target`" tray"
-    $launchExe = $target
-    $launchArgs = @("tray")
-    $shortcutArgs = "tray"
-    $shortcutWorkDir = $installDir
+    $exeArgs = @("install")
+    if ($NoAutostart) { $exeArgs += "--no-autostart" }
+    if ($NoShortcut) { $exeArgs += "--no-shortcut" }
+    if ($NoLaunch) { $exeArgs += "--no-launch" }
+    if ($SkipCredentialProvider) { $exeArgs += "--no-provider" }
+    # The packaged installer already explains itself on screen; keep scripted
+    # runs quiet (no message box).
+    $env:BIOUNLOCK_INSTALLER_QUIET = "1"
+    try {
+        & $ExePath @exeArgs
+    }
+    finally {
+        Remove-Item Env:\BIOUNLOCK_INSTALLER_QUIET -ErrorAction SilentlyContinue
+    }
+    exit $LASTEXITCODE
 }
 
-# A source install and an .exe install write the same value name; make sure the
-# tray process (pythonw for source mode) is stopped before switching.
+# --- source install -------------------------------------------------------
+$installDir = Join-Path $env:LOCALAPPDATA "BioUnlock"
+New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+
+$projectDir = $root
+$pythonw = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
+if (-not $pythonw) {
+    $python = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
+    if ($python) { $pythonw = Join-Path (Split-Path $python) "pythonw.exe" }
+}
+if (-not $pythonw -or -not (Test-Path -LiteralPath $pythonw)) {
+    throw "pythonw.exe was not found. Install Python 3.11+ and its dependencies first."
+}
+$target = Join-Path $installDir "biounlock-tray.cmd"
+$content = @"
+@echo off
+cd /d "$projectDir"
+start "" "$pythonw" -m biounlock_agent tray
+"@
+Set-Content -LiteralPath $target -Value $content -Encoding ASCII
+Write-Host "Installed source launcher -> $target"
+$runValue = "`"$target`""
+$launchExe = $target
+$launchArgs = @()
+$shortcutArgs = ""
+$shortcutWorkDir = $projectDir
+
+# Stop a previously installed source tray before switching to the new launcher.
 Get-CimInstance Win32_Process -Filter "Name='pythonw.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -match "biounlock_agent" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -95,6 +100,17 @@ if (-not $NoShortcut) {
     $shortcut.Arguments = $shortcutArgs
     $shortcut.WorkingDirectory = $shortcutWorkDir
     $shortcut.Description = "BioUnlock phone unlock agent"
+    # Give the Start Menu / search entry the BioUnlock logo. Prefer the bundled
+    # .ico, and fall back to the .exe's own embedded icon.
+    $iconSource = Join-Path $root "assets\BioUnlock.ico"
+    if (Test-Path -LiteralPath $iconSource) {
+        $iconDest = Join-Path $installDir "BioUnlock.ico"
+        Copy-Item -LiteralPath $iconSource -Destination $iconDest -Force
+        $shortcut.IconLocation = "$iconDest,0"
+    }
+    elseif ($launchExe -like "*.exe") {
+        $shortcut.IconLocation = "$launchExe,0"
+    }
     $shortcut.Save()
     Write-Host "Created Start Menu shortcut -> $shortcutPath"
 }

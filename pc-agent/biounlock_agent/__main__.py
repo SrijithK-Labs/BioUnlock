@@ -3,6 +3,7 @@
 Usage::
 
     python -m biounlock_agent tray
+    python -m biounlock_agent install
     python -m biounlock_agent enroll --server-url https://unlock.example.com --token <api-token>
     python -m biounlock_agent set-credential
     python -m biounlock_agent run
@@ -135,6 +136,17 @@ def _cmd_clear_credential(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_install(args: argparse.Namespace) -> int:
+    from biounlock_agent import installer
+
+    return installer.install_app(
+        provider=not args.no_provider,
+        autostart=not args.no_autostart,
+        shortcut=not args.no_shortcut,
+        start=not args.no_launch,
+    )
+
+
 def _cmd_tray(args: argparse.Namespace) -> int:
     try:
         from biounlock_agent.tray import main as tray_main
@@ -192,6 +204,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     clearcred.set_defaults(func=_cmd_clear_credential)
 
+    install = sub.add_parser(
+        "install",
+        help="Install the tray app for this PC (one UAC prompt enables logon unlock)",
+    )
+    install.add_argument("--no-provider", action="store_true", help="Skip the Windows Credential Provider")
+    install.add_argument("--no-autostart", action="store_true", help="Do not start the app at login")
+    install.add_argument("--no-shortcut", action="store_true", help="Do not create a Start Menu shortcut")
+    install.add_argument("--no-launch", action="store_true", help="Do not start the app after installing")
+    install.set_defaults(func=_cmd_install)
+
     gui = sub.add_parser("tray", help="Launch the system tray application")
     gui.set_defaults(func=_cmd_tray)
 
@@ -202,7 +224,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
-        # Double-clicking the app (or running with no arguments) opens the tray.
+        # Double-clicking a packaged app that is not installed yet sets it up
+        # first; the installed copy (and a source checkout) just opens the tray.
+        from biounlock_agent import installer
+
+        if installer.should_self_install():
+            return installer.install_app()
         return _cmd_tray(args)
     return args.func(args)
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Shared empty state used across the tabs: a soft icon badge, a title and an
+import '../theme.dart';
+
+/// Shared empty state used across the tabs: an icon badge, a title and an
 /// optional supporting line and action.
 class EmptyState extends StatelessWidget {
   const EmptyState({
@@ -18,8 +20,7 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = context.scheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       child: Column(
@@ -28,22 +29,23 @@ class EmptyState extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: scheme.secondaryContainer,
+              color: scheme.surfaceContainerHighest,
               shape: BoxShape.circle,
+              border: Border.all(color: scheme.outlineVariant),
             ),
-            child: Icon(icon, size: 40, color: scheme.onSecondaryContainer),
+            child: Icon(icon, size: 36, color: scheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           Text(
             title,
-            style: theme.textTheme.titleMedium,
+            style: context.texts.titleMedium,
             textAlign: TextAlign.center,
           ),
           if (message != null) ...[
             const SizedBox(height: 8),
             Text(
               message!,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              style: context.texts.bodyMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,

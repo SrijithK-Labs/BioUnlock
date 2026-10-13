@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../config.dart';
 import '../state/app_state.dart';
+import '../theme.dart';
+import '../widgets/brand_mark.dart';
+import '../widgets/glass_card.dart';
 
 /// First-run screen: point the app at a self-hosted BioUnlock server.
 class SetupScreen extends StatefulWidget {
@@ -33,88 +36,106 @@ class _SetupScreenState extends State<SetupScreen> {
     );
     if (!mounted) return;
     if (ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Server connected.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Server connected.')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final scheme = context.scheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('BioUnlock setup')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Image.asset(
-                  'assets/logo.png',
-                  width: 112,
-                  height: 112,
-                  fit: BoxFit.cover,
-                ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(child: BrandMark(size: 84)),
+                  const SizedBox(height: 24),
+                  Text(
+                    'BioUnlock setup',
+                    textAlign: TextAlign.center,
+                    style: context.texts.labelLarge?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Connect to your server',
+                    textAlign: TextAlign.center,
+                    style: context.texts.headlineSmall,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'BioUnlock is self-hosted. Enter your server address — a LAN '
+                    'URL like http://192.168.1.10:8000 or an https:// tunnel.',
+                    textAlign: TextAlign.center,
+                    style: context.texts.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  GlassCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _controller,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Server URL',
+                            hintText: 'http://192.168.1.10:8000',
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _tokenController,
+                          autocorrect: false,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'API token',
+                            helperText: 'Set as BIO_API_TOKEN on your server',
+                          ),
+                        ),
+                        if (state.error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            state.error!,
+                            style: context.texts.bodySmall?.copyWith(
+                              color: scheme.error,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: state.busy ? null : _save,
+                          icon: state.busy
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.login_rounded),
+                          label: const Text('Connect'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Connect to your server',
-              style: Theme.of(context).textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'BioUnlock is self-hosted. Enter the address of your BioUnlock '
-              'server, e.g. http://192.168.1.10:8000 or an https://… '
-              'tunnel URL.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _controller,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Server URL',
-                hintText: 'http://192.168.1.10:8000',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _tokenController,
-              autocorrect: false,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'API token',
-                helperText: 'Set as BIO_API_TOKEN on your server',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (state.error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                state.error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: state.busy ? null : _save,
-              icon: state.busy
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.cloud_done),
-              label: const Text('Connect'),
-            ),
-          ],
+          ),
         ),
       ),
     );

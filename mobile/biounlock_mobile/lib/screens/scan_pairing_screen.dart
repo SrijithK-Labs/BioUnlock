@@ -42,8 +42,15 @@ class _ScanPairingScreenState extends State<ScanPairingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan pairing code')),
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Scan pairing code'),
+        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+      ),
       body: Stack(
+        fit: StackFit.expand,
         children: [
           MobileScanner(
             controller: _controller,
@@ -54,6 +61,25 @@ class _ScanPairingScreenState extends State<ScanPairingScreen> {
                 child: Text(
                   'Camera unavailable: ${error.errorDetails?.message ?? error.errorCode.name}',
                   textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+          IgnorePointer(
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.35),
+              child: Center(
+                child: Container(
+                  width: 260,
+                  height: 260,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white, width: 3),
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black54, blurRadius: 24),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -61,7 +87,7 @@ class _ScanPairingScreenState extends State<ScanPairingScreen> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 24,
+            bottom: 48,
             child: Column(
               children: [
                 if (_message != null)
@@ -69,8 +95,8 @@ class _ScanPairingScreenState extends State<ScanPairingScreen> {
                     margin: const EdgeInsets.symmetric(horizontal: 24),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.red.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       _message!,
@@ -78,11 +104,23 @@ class _ScanPairingScreenState extends State<ScanPairingScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Point the camera at the QR code shown by the PC agent.',
-                  style: TextStyle(color: Colors.white),
-                  textAlign: TextAlign.center,
+                if (_message != null) const SizedBox(height: 12),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 32),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Text(
+                    'Point the camera at the QR code shown by the PC agent.',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ],
             ),

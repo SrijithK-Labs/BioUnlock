@@ -3,7 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../models/misc.dart';
 import '../state/passkeys_controller.dart';
+import '../theme.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/section_header.dart';
 
 class PasskeysTab extends StatelessWidget {
   const PasskeysTab({super.key});
@@ -12,13 +15,14 @@ class PasskeysTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<PasskeysController>();
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
         onRefresh: controller.load,
         child: _buildBody(context, controller),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: controller.busy ? null : () => _add(context),
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: const Text('Add passkey'),
       ),
     );
@@ -30,32 +34,47 @@ class PasskeysTab extends StatelessWidget {
     }
     if (controller.credentials.isEmpty) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 112),
         children: [
-          const SizedBox(height: 80),
           EmptyState(
-            icon: Icons.key,
+            icon: Icons.fingerprint_rounded,
             title: 'No passkeys yet',
             message:
-                'Add a passkey to authorize your PCs with your fingerprint or face.',
-            action: controller.error == null
-                ? null
-                : Text(
-                    controller.error!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
+                'Add a passkey to authorize your PCs with your fingerprint or '
+                'face.',
+            action: FilledButton.icon(
+              onPressed: () => _add(context),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add a passkey'),
+            ),
           ),
+          if (controller.error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              controller.error!,
+              textAlign: TextAlign.center,
+              style: context.texts.bodySmall?.copyWith(
+                color: context.scheme.error,
+              ),
+            ),
+          ],
         ],
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: controller.credentials.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, i) =>
-          _PasskeyCard(controller.credentials[i], controller: controller),
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+      children: [
+        SectionHeader(
+          title: 'Your passkeys',
+          caption: '${controller.credentials.length}',
+        ),
+        for (final credential in controller.credentials) ...[
+          const SizedBox(height: 12),
+          _PasskeyCard(credential, controller: controller),
+        ],
+      ],
     );
   }
 
@@ -94,7 +113,9 @@ class PasskeysTab extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          ok ? 'Passkey added.' : controller.error ?? 'Passkey registration failed.',
+          ok
+              ? 'Passkey added.'
+              : controller.error ?? 'Passkey registration failed.',
         ),
       ),
     );
@@ -109,56 +130,51 @@ class _PasskeyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: scheme.secondaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.fingerprint,
-                color: scheme.onSecondaryContainer,
-              ),
+    final scheme = context.scheme;
+    return GlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: scheme.primary.withValues(alpha: 0.12),
+              border: Border.all(color: scheme.primary.withValues(alpha: 0.25)),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    credential.name ?? 'Passkey',
-                    style: theme.textTheme.titleMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            child: Icon(Icons.fingerprint_rounded, color: scheme.primary),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  credential.name ?? 'Passkey',
+                  style: context.texts.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Added ${_formatDate(credential.createdAt)}',
+                  style: context.texts.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Added ${_formatDate(credential.createdAt)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Remove passkey',
-              color: scheme.error,
-              onPressed: controller.busy
-                  ? null
-                  : () => _delete(context, credential.id),
-            ),
-          ],
-        ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded),
+            tooltip: 'Remove passkey',
+            color: scheme.error,
+            onPressed: controller.busy
+                ? null
+                : () => _delete(context, credential.id),
+          ),
+        ],
       ),
     );
   }

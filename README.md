@@ -20,14 +20,33 @@ inbound port, and Bluetooth or "same Wi-Fi" is never required.
 Prebuilt artifacts are attached to
 [**Releases**](https://github.com/SrijithK-Labs/BioUnlock/releases):
 
-| Platform | File | What it is |
+| Platform | Files | What it is |
 | --- | --- | --- |
-| Windows | `BioUnlock.exe` + `install-agent.ps1` | Tray app that links and controls the PC |
+| Windows | `BioUnlock.exe` | Self-installing tray app that links and controls the PC |
 | Android | `app-release.apk` | Phone authenticator (passkey) |
 
+**Windows app:** download `BioUnlock.exe` and run it. It installs itself — one
+file, no separate script:
+
+```powershell
+.\BioUnlock.exe install
+```
+
+It copies the app to `%LOCALAPPDATA%\BioUnlock`, adds it to Start-up, creates a
+Start Menu shortcut, and launches the tray icon. No admin rights are needed for
+that. It then asks once for elevation (**one UAC prompt**) to register the
+bundled Windows Credential Provider, which powers logon-screen unlock; declining
+just skips that step. If Windows **Smart App Control** blocks the unsigned
+`.exe`, install from source with
+`powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource` (it
+launches via `pythonw.exe`, which Smart App Control allows).
+
+**Phone app:** download `app-release.apk` and open it on your phone to install
+(allow "install unknown apps" when prompted).
+
 You still need to **host the backend** yourself (one-time, a few minutes) — see
-[Quick start](#quick-start). The Windows installer and the phone app both need
-only two things: your backend **URL** and your **API token**.
+[Quick start](#quick-start). The Windows app and the phone app both need only two
+things: your backend **URL** and your **API token**.
 
 ## How it works
 
@@ -100,10 +119,15 @@ and build troubleshooting.
 
 ### 3. Windows app
 
-Install `BioUnlock.exe` via the per-user installer (no admin needed), then in the
-tray app enter the backend **URL** and **API token** and click **Link this PC**,
-scanning the QR code with the phone. To unlock the actual logon screen, also
-install the Credential Provider and store your Windows credential. Full steps:
+Install `BioUnlock.exe` — it is self-installing (per-user, no admin needed) and
+bundles the Credential Provider, which it registers after one UAC prompt. Then in
+the tray app enter the backend **URL** and **API key** and click **Link this PC**,
+scanning the QR code with the phone. The API key is needed because linking
+enrolls the PC through the backend's `POST /devices/enroll` endpoint, which your
+backend protects with `BIO_API_TOKEN` — so a stranger who only knows the URL
+still cannot add a device. It is entered once and stored on the PC; afterwards
+the agent authenticates with its own signed device key. To unlock the actual
+logon screen, store your Windows password in the tray. Full steps:
 [`pc-agent/README.md`](pc-agent/README.md).
 
 ## Configuration: just the token
