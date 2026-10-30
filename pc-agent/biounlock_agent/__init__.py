@@ -2,10 +2,10 @@
 
 An outbound-only Windows agent that pairs a PC with a BioUnlock backend,
 keeps the server's signing key pinned, independently verifies signed
-authorization envelopes, and reports a truthful result.
-
-This package never unlocks a Windows session in the current milestone; it
-verifies requests and reports status honestly.
+authorization envelopes, and reports a truthful result. On a verified
+``remote_unlock`` it hands a short-lived ticket to the native Windows
+Credential Provider, which performs the real sign-in; ``remote_lock`` locks
+the workstation.
 """
 
 from __future__ import annotations

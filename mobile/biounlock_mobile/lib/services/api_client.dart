@@ -49,7 +49,8 @@ class ApiClient {
     Map<String, String>? headers,
   }) async {
     final request = http.Request(method, _uri(path))
-      ..headers.addAll(_headers(extra: headers));
+      ..headers.addAll(_headers(extra: headers))
+      ..followRedirects = false;
     if (body != null) {
       request.body = jsonEncode(body);
     }

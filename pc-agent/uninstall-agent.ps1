@@ -2,15 +2,18 @@
 #
 #   powershell -ExecutionPolicy Bypass -File uninstall-agent.ps1
 #   powershell -ExecutionPolicy Bypass -File uninstall-agent.ps1 -KeepData
+#   powershell -ExecutionPolicy Bypass -File uninstall-agent.ps1 -KeepSystemAgent
 #   powershell -ExecutionPolicy Bypass -File uninstall-agent.ps1 -RemoveCredentialProvider
 #
 # Removes the running tray, the start-at-login entry, the Start Menu shortcut, and
-# (unless -KeepData) the local data under %LOCALAPPDATA%\BioUnlock. It does NOT
-# remove the Windows Credential Provider or a boot-start service by default, since
-# both need elevation; pass -RemoveCredentialProvider or run uninstall-service.ps1.
+# (unless -KeepData) the local data under %LOCALAPPDATA%\BioUnlock. It also removes
+# the SYSTEM pre-login task unless -KeepSystemAgent is passed; that step needs
+# elevation and shows one UAC prompt. The Windows Credential Provider is only
+# removed with -RemoveCredentialProvider.
 [CmdletBinding()]
 param(
     [switch]$KeepData,
+    [switch]$KeepSystemAgent,
     [switch]$RemoveCredentialProvider,
     [switch]$NoShortcut
 )
@@ -58,7 +61,32 @@ elseif (Test-Path -LiteralPath $installDir) {
     Write-Host "Removed local data -> $installDir"
 }
 
-# 5. Optionally remove the Credential Provider (needs elevation).
+# 5. Remove the SYSTEM pre-login task (needs elevation).
+$taskName = "BioUnlockAgent"
+if ($KeepSystemAgent) {
+    Write-Host "Kept the pre-login task -> $taskName"
+}
+elseif (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+    Write-Host "Removing the pre-login task (needs elevation)..."
+    $taskCommand = "Stop-ScheduledTask -TaskName '$taskName' -ErrorAction SilentlyContinue; " +
+        "Unregister-ScheduledTask -TaskName '$taskName' -Confirm:`$false"
+    try {
+        $proc = Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList @(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $taskCommand
+        )
+        if ($proc.ExitCode -eq 0) {
+            Write-Host "Removed the pre-login task -> $taskName"
+        }
+        else {
+            Write-Warning "Could not remove the pre-login task (exit $($proc.ExitCode))."
+        }
+    }
+    catch {
+        Write-Warning "Did not remove the pre-login task ($_)."
+    }
+}
+
+# 6. Optionally remove the Credential Provider (needs elevation).
 if ($RemoveCredentialProvider) {
     $cpUninstall = Join-Path $root "windows-credential-provider\uninstall.ps1"
     if (Test-Path -LiteralPath $cpUninstall) {
@@ -88,4 +116,5 @@ if (-not $RemoveCredentialProvider) {
 }
 Write-Host "Note: if you installed the boot-start service, remove it separately (needs admin):"
 Write-Host "  powershell -ExecutionPolicy Bypass -File uninstall-service.ps1"
-Write-Host "Note: machine-wide data under $env:ProgramData\BioUnlock (if any) is left in place."
+Write-Host "Note: machine-wide data under $env:ProgramData\BioUnlock (enrollment, credential"
+Write-Host "      and unlock ticket) is left in place; delete it manually for a clean slate."

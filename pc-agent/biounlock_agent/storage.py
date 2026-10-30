@@ -4,20 +4,17 @@ Secrets are stored through a small :class:`SecretStore` interface:
 
 - :class:`DpapiSecretStore` protects blobs with Windows DPAPI (current-user
   scope). This is the production path on Windows.
-- :class:`FileSecretStore` is a plaintext, owner-only fallback used on
-  non-Windows platforms and when DPAPI is unavailable (development/tests).
+- :class:`FileSecretStore` is a plaintext, owner-only store used on
+    non-Windows development platforms.
 
 The device private key is never written to ``config.json`` and never logged.
 """
 
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 from typing import Protocol, runtime_checkable
-
-logger = logging.getLogger(__name__)
 
 # CRYPTPROTECT_LOCAL_MACHINE from dpapi.h. Not exposed as a constant by
 # pywin32's win32crypt, so the numeric value is used directly.
@@ -123,7 +120,7 @@ def dpapi_available() -> bool:
 
 
 def default_secret_store(base_dir: Path, *, machine: bool | None = None) -> SecretStore:
-    """Return DPAPI storage on Windows, otherwise a plaintext fallback.
+    """Return DPAPI storage on Windows, otherwise the non-Windows file store.
 
     ``machine`` defaults to the service mode, so an installed service
     transparently switches to machine-scope secrets.
@@ -136,8 +133,8 @@ def default_secret_store(base_dir: Path, *, machine: bool | None = None) -> Secr
     if os.name == "nt" and dpapi_available():
         return DpapiSecretStore(base_dir, machine=machine)
     if os.name == "nt":
-        logger.warning(
-            "pywin32 is not installed; the device key will be stored WITHOUT DPAPI "
-            "protection. Install pywin32 for production use."
+        raise RuntimeError(
+            "Windows DPAPI is required to store BioUnlock secrets. "
+            "Install the packaged app or install pywin32 before running from source."
         )
     return FileSecretStore(base_dir)

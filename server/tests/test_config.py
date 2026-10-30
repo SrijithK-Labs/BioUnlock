@@ -26,6 +26,12 @@ def test_defaults_to_sqlite():
     assert Settings(_env_file=None).database_url == DEFAULT_DATABASE_URL
 
 
+def test_defaults_to_production_without_environment_overrides(monkeypatch):
+    monkeypatch.delenv("BIO_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("VERCEL_ENV", raising=False)
+    assert Settings(_env_file=None).environment == "production"
+
+
 def test_bio_database_url_is_used_and_normalized(monkeypatch):
     monkeypatch.setenv("BIO_DATABASE_URL", "postgresql://user:pw@host/db")
     assert Settings(_env_file=None).database_url == "postgresql+psycopg://user:pw@host/db"

@@ -2,7 +2,7 @@
 
 Trust boundaries and mitigation by threat for the initial MVP.
 
-Assets: user identity, PC-agent identity/keys, server signing key, paired
+Assets: owner identity, PC-agent identity/keys, server signing key, paired
 device bindings, authentication request integrity, truthful status reporting.
 
 ## Threat: Replay attacks
@@ -17,29 +17,26 @@ An attacker replays a previously valid envelope or assertion.
 
 The phone holds a passkey and can authorize remote unlock requests.
 
-- **Mitigation:** platform biometric requirement enforced via `local_auth`
-  guard + passkey user-presence; the user can revoke the phone's session and
-  revoke paired PCs from the dashboard; security event history is surfaced to
-  the user. We cannot prevent the platform auth from being bypassed if the
-  device OS is compromised — documented limitation.
+- **Mitigation:** WebAuthn requires user verification on the platform
+  authenticator; the owner can revoke paired PCs and review security events.
+  BioUnlock cannot protect a phone after its operating system is compromised.
 
 ## Threat: Unauthorized pairing
 
-An attacker tries to pair a PC to an account they do not control.
+An attacker tries to pair an unapproved PC without the owner's passkey.
 
-- **Mitigation:** pairing codes are 192-bit random, single-use, TTL-limited,
-  attempt-limited, and must be confirmed by a WebAuthn-authenticated account
-  holder using a phone that can also see the QR. Revocation removes an
+- **Mitigation:** pairing codes are 128-bit random, single-use, TTL-limited,
+  attempt-limited, and must be confirmed by the owner's WebAuthn passkey using
+  a phone that can also see the QR. Revocation removes an
   unapproved device.
 
 ## Threat: Malicious requests
 
 An attacker fabricates an auth request.
 
-- **Mitigation:** challenge bound to account+PC; assertion must verify against
-  a registered credential; server enforces device ownership on every endpoint
-  (a PC id is never trusted without an ownership + paired + not-revoked
-  check). The agent independently verifies each envelope.
+- **Mitigation:** challenge bound to a specific PC; assertion must verify
+  against the owner's registered credential; the target PC must be active and
+  paired. The agent independently verifies each signed envelope.
 
 ## Threat: Compromised backend
 
@@ -48,8 +45,8 @@ The server is fully or partially controlled by an attacker.
 - **Mitigation:** the agent pins the server signing key at pairing time; a
   different/new server cannot forge envelopes. WebAuthn assertions are verified
   against credentials stored by the (possibly compromised) server, so scope:
-  a fully compromised backend can impersonate the user to the agent for as long
-  as it holds the account credentials and device bindings. This is why the
+  a fully compromised backend can impersonate the owner to the agent for as long
+  as it controls the passkey public credentials and device bindings. This is why the
   server must be treated as trusted infrastructure (TLS, secrets, auditing).
   Pairing re-pins the key in response to a suspected compromise.
 
@@ -64,26 +61,30 @@ An attacker pretends to be a paired PC.
 
 ## Threat: Credential theft
 
-Session tokens, signing keys, or pairing codes are stolen.
+The owner API token, a device key, the server signing key, or a pairing code is
+stolen.
 
-- **Mitigation:** tokens hashed at rest, short TTL; signing keys stored with
-  file/keyring protection; pairing codes ephemeral and single-use; secrets
-  never logged or committed; `.env`/key files gitignored.
+- **Mitigation:** device keys use DPAPI; pairing codes are high-entropy,
+  single-use, short-lived, and stored as hashes. Production signing keys come
+  from a deployment secret store. The owner API token is a long-lived shared
+  secret and must be rotated immediately if exposed; it is not a revocable
+  per-session token. Secrets must never be logged or committed.
 
-## Threat: Session hijacking
+## Threat: Owner API token replay
 
-A stolen bearer token is replayed.
+A stolen owner bearer token is replayed.
 
-- **Mitigation:** HTTPS-only, token TTL + server-side revocation list; changing
-  the backend invalidates local sessions and requires fresh pairing.
+- **Mitigation:** HTTPS-only and secret-store protection. Rotate the shared
+  token to revoke it. The token has no built-in expiry or per-session
+  revocation; mobile storage uses platform secure storage.
 
 ## Threat: Brute-force attacks
 
-Passwords or pairing codes are guessed.
+Pairing codes or owner tokens are guessed.
 
-- **Mitigation:** bcrypt password hashing, global per-IP and per-account rate
-  limits, pairing attempt caps, single-use codes, lockout-style backoff on
-  repeated failures.
+- **Mitigation:** pairing codes contain 128 bits of randomness, expire, are
+  single-use, and have database-backed attempt caps. In-process per-IP limits
+  are enabled; production deployments also need a shared edge/proxy limiter.
 
 ## Threat: Expired challenges
 
@@ -94,7 +95,7 @@ Stale challenges are used.
 
 ## Threat: Revoked devices
 
-A revoked/removed PC or session is still used.
+A revoked/removed PC is still used.
 
 - **Mitigation:** revocation marks rows and disconnects delivery sockets;
   revoked devices get 401/403 and dropped envelopes; revocation is logged.
@@ -107,19 +108,19 @@ Temporary loss of connectivity breaks the flow.
   survive reconnects; requests expire if unresolved; retries are idempotent
   (ack by id). Requests fail closed when the server is unreachable.
 
-## Threat: Account confusion
+## Threat: Device/request confusion
 
-Cross-user access, e.g., user A controls user B's PC or requests.
+A request or acknowledgement is applied to a different paired PC.
 
-- **Mitigation:** every protected endpoint checks account ownership of devices,
-  challenges, requests, and security events before acting; tests cover
-  cross-user prevention.
+- **Mitigation:** challenges are bound to a specific active device, signed
+  envelopes include that device id, and acknowledgements require that device's
+  signed credential. Tests cover cross-device rejection.
 
 ## Threat: Denial of service
 
 The backend or agent is flooded.
 
-- **Mitigation:** rate limiting, request size limits, bounded retry/backoff,
+- **Mitigation:** a 1 MiB request-body cap, rate limiting, bounded retry/backoff,
   small surfaces (no shell/cmd execution on the PC). The agent ignores unknown
   envelope formats.
 
@@ -134,17 +135,17 @@ A user is tricked into pointing clients at a malicious server.
 
 ## Threat: Local Windows privilege boundaries
 
-A low-privilege local attacker reads agent secrets or hijacks the agent.
+A different, standard Windows account attempts to read agent secrets or forge
+an unlock ticket.
 
-- **Mitigation:** DPAPI user-scoped encryption, restricted file ACLs on config
-  and ticket store, service runs under a dedicated low-privilege account, GUI
-  and service are separate processes, no arbitrary command execution surface.
-  A user-level attacker on the same Windows account retains full access to that
-  account's data regardless of BioUnlock — documented boundary.
+- **Mitigation:** the shared data directory is ACL-restricted to SYSTEM, local
+  administrators, and the installing account; Windows DPAPI protects stored
+  blobs. The pre-login agent runs as SYSTEM, so local administrators and SYSTEM
+  remain trusted and can decrypt machine-scope blobs. A process running as the
+  installing user retains access to that user's data.
 
-## Non-goals of the MVP
+## Non-goals
 
-- No Windows session unlock (see `windows-authentication.md`).
 - No offline unlock when the backend is unreachable.
 - No protection once the server host or the Windows account itself is fully
   compromised.

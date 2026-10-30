@@ -2,7 +2,6 @@
 
 #include "Provider.h"
 
-#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -132,44 +131,6 @@ HRESULT CreateSerialization(const TicketData& ticket, CREDENTIAL_PROVIDER_USAGE_
     pcpcs->ulAuthenticationPackage = authPackage;
     pcpcs->clsidCredentialProvider = CLSID_BioUnlockProvider;
     return S_OK;
-}
-
-// Diagnostics: when %ProgramData%\BioUnlock\cp_debug.on exists, dump the produced
-// serialization so a failed logon can be inspected without a debugger.
-void MaybeDumpDebug(const TicketData& ticket, CREDENTIAL_PROVIDER_USAGE_SCENARIO cpus,
-                    const CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION& pcpcs) {
-    const std::wstring dir = SharedDir();
-    if (GetFileAttributesW((dir + L"\\cp_debug.on").c_str()) == INVALID_FILE_ATTRIBUTES) {
-        return;
-    }
-    HANDLE file = CreateFileW((dir + L"\\cp_debug.txt").c_str(), GENERIC_WRITE, FILE_SHARE_READ,
-                              nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) {
-        return;
-    }
-    char header[256];
-    int n = sprintf_s(header,
-                      "cpus=%d pkg=%lu user_len=%zu domain_len=%zu pass_len=%zu total=%lu\r\n",
-                      static_cast<int>(cpus),
-                      static_cast<unsigned long>(pcpcs.ulAuthenticationPackage),
-                      ticket.username.size(), ticket.domain.size(), ticket.password.size(),
-                      static_cast<unsigned long>(pcpcs.cbSerialization));
-    DWORD written = 0;
-    WriteFile(file, header, static_cast<DWORD>(n), &written, nullptr);
-
-    std::string hex;
-    const BYTE* bytes = pcpcs.rgbSerialization;
-    for (ULONG i = 0; i < pcpcs.cbSerialization; ++i) {
-        char b[4];
-        sprintf_s(b, "%02X ", bytes[i]);
-        hex += b;
-        if ((i + 1) % 16 == 0) {
-            hex += "\r\n";
-        }
-    }
-    hex += "\r\n";
-    WriteFile(file, hex.data(), static_cast<DWORD>(hex.size()), &written, nullptr);
-    CloseHandle(file);
 }
 
 }  // namespace
@@ -570,8 +531,6 @@ IFACEMETHODIMP CBioUnlockCredential::GetSerialization(
     }
 
     *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
-
-    MaybeDumpDebug(*ticket, _cpus, *pcpcs);
 
     // Consume the ticket: it is single-use. Drop the cached copy too so a stale
     // password does not linger in memory longer than necessary.

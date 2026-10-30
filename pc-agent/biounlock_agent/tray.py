@@ -27,7 +27,6 @@ import threading
 import time
 import tkinter as tk
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 
 import pystray
@@ -37,6 +36,7 @@ from biounlock_agent import unlock
 from biounlock_agent.agent import Agent
 from biounlock_agent.config import default_home
 from biounlock_agent.logging_setup import configure_logging
+from biounlock_agent.theme import Palette, apps_use_light_theme, palette_for
 
 logger = logging.getLogger(__name__)
 
@@ -50,91 +50,9 @@ AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 AUTOSTART_VALUE_NAME = "BioUnlock"
 INSTANCE_MUTEX_NAME = "BioUnlockTray"
 ICON_SIZE = 64
-THEME_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 
 # Kept alive for the whole process so Windows does not release the lock early.
 _instance_mutex: object | None = None
-
-
-# --- theme ----------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Palette:
-    """Flat colour set shared with the phone app (one accent, neutral surfaces)."""
-
-    bg: str
-    card: str
-    border: str
-    subtle: str
-    text: str
-    muted: str
-    accent: str
-    on_accent: str
-    accent_hover: str
-    success: str
-    warning: str
-    danger: str
-    ok_bg: str
-    warn_bg: str
-    err_bg: str
-    scroll_thumb: str
-    scroll_thumb_active: str
-
-
-def apps_use_light_theme() -> bool:
-    """Whether Windows is set to light app mode (defaults to light)."""
-    if winreg is None:  # pragma: no cover - non-Windows
-        return True
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, THEME_KEY) as key:
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            return bool(value)
-    except OSError:
-        return True
-
-
-def palette_for(light: bool) -> Palette:
-    """Return the flat palette for the given Windows app theme."""
-    if light:
-        return Palette(
-            bg="#F4F5F7",
-            card="#FFFFFF",
-            border="#E3E6EB",
-            subtle="#EEF1F5",
-            text="#1A1D20",
-            muted="#5B6470",
-            accent="#2F6FEB",
-            on_accent="#FFFFFF",
-            accent_hover="#255BC7",
-            success="#1E9E62",
-            warning="#B7791F",
-            danger="#D64545",
-            ok_bg="#E3F5EC",
-            warn_bg="#FBF1DD",
-            err_bg="#FBE9E9",
-            scroll_thumb="#CDD3DB",
-            scroll_thumb_active="#9AA4B2",
-        )
-    return Palette(
-        bg="#0F1113",
-        card="#1A1D20",
-        border="#2A2F35",
-        subtle="#22262B",
-        text="#F2F4F7",
-        muted="#9AA4B2",
-        accent="#6E9DF7",
-        on_accent="#0B0D10",
-        accent_hover="#8AAFFA",
-        success="#4ADE80",
-        warning="#FACC15",
-        danger="#F87171",
-        ok_bg="#12301F",
-        warn_bg="#2E2711",
-        err_bg="#331A1A",
-        scroll_thumb="#333A42",
-        scroll_thumb_active="#4A525C",
-    )
 
 
 class FlatScrollbar(tk.Canvas):
@@ -465,12 +383,20 @@ def _fallback_icon_image() -> Image.Image:
 
 
 class AgentRunner:
-    """Runs the agent's asyncio loop on a background thread."""
+    """Runs the agent's asyncio loop on a background thread.
+
+    If the loop stops without being asked to (a fatal error inside the agent),
+    it is started again so a transient failure cannot leave the PC unreachable
+    until the app is restarted by hand.
+    """
+
+    RESTART_DELAY_SECONDS = 3.0
 
     def __init__(self, agent: Agent) -> None:
         self.agent = agent
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._stopping = threading.Event()
 
     def is_running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
@@ -478,6 +404,7 @@ class AgentRunner:
     def start(self) -> None:
         if self.is_running():
             return
+        self._stopping.clear()
         self._loop = asyncio.new_event_loop()
 
         def _run() -> None:
@@ -486,9 +413,14 @@ class AgentRunner:
                 return
             asyncio.set_event_loop(loop)
             try:
-                loop.run_until_complete(self.agent.run())
-            except Exception:  # noqa: BLE001 - keep the tray alive
-                pass
+                while not self._stopping.is_set():
+                    try:
+                        loop.run_until_complete(self.agent.run())
+                    except Exception:  # noqa: BLE001 - keep the tray alive
+                        pass
+                    if self._stopping.is_set():
+                        break
+                    self._stopping.wait(self.RESTART_DELAY_SECONDS)
             finally:
                 loop.close()
 
@@ -496,6 +428,7 @@ class AgentRunner:
         self._thread.start()
 
     def stop(self) -> None:
+        self._stopping.set()
         loop = self._loop
         if loop is not None and loop.is_running():
             loop.call_soon_threadsafe(self.agent.request_stop)

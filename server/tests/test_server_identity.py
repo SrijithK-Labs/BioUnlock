@@ -1,12 +1,14 @@
-"""Tests for database-persisted server identity.
+"""Tests for development database persistence and external server identity.
 
-The server signing key must survive restarts/deploys, so it is generated once
-and stored in the ``server_config`` row instead of relying on a file or env var.
+Development and tests may persist the signing key in ``server_config``. Deployed
+environments must receive a stable key from an external secret store.
 """
 
 from __future__ import annotations
 
-from app.core.security import SIGNING_KEY_ENV, ServerSigningKey
+import pytest
+
+from app.core.security import SIGNING_KEY_ENV, ServerSigningKey, SigningKeyError
 from app.core.server_identity import SERVER_CONFIG_ID, load_or_create_signing_key
 from app.models import ServerConfig
 
@@ -34,3 +36,26 @@ def test_env_key_overrides_database(app, monkeypatch):
     assert key.fingerprint() == source.fingerprint()
     with app.state.session_factory() as session:
         assert session.get(ServerConfig, SERVER_CONFIG_ID) is None
+
+
+def test_deployed_env_key_removes_legacy_database_key(app, monkeypatch):
+    factory = app.state.session_factory
+    old_key = ServerSigningKey.generate()
+    with factory() as session:
+        session.add(ServerConfig(id=SERVER_CONFIG_ID, signing_key_pem=old_key.to_pem()))
+        session.commit()
+
+    production_key = ServerSigningKey.generate()
+    monkeypatch.setenv(SIGNING_KEY_ENV, production_key.to_pem())
+    loaded = load_or_create_signing_key(factory, require_external=True)
+
+    assert loaded.fingerprint() == production_key.fingerprint()
+    with factory() as session:
+        assert session.get(ServerConfig, SERVER_CONFIG_ID).signing_key_pem is None
+
+
+def test_deployed_mode_requires_external_key(app, monkeypatch):
+    monkeypatch.delenv(SIGNING_KEY_ENV, raising=False)
+
+    with pytest.raises(SigningKeyError, match="required in deployed environments"):
+        load_or_create_signing_key(app.state.session_factory, require_external=True)

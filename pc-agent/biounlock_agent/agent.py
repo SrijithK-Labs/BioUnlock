@@ -369,9 +369,10 @@ class Agent:
         # A fresh event each run: an asyncio.Event binds to the loop that first
         # awaits it, so reusing ``self._stop`` across runs (each in its own loop)
         # raised "bound to a different event loop" and silently killed the agent.
+        # A caller-supplied event that is already set stays set, so a stop
+        # request that raced with the start of this run is not lost.
         stop = stop_event if stop_event is not None else asyncio.Event()
         self._stop = stop
-        stop.clear()
         self.load_or_create_identity()
         api = self._ensure_api()
 

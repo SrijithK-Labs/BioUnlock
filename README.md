@@ -26,18 +26,23 @@ Prebuilt artifacts are attached to
 | Android | `app-release.apk` | Phone authenticator (passkey) |
 
 **Windows app:** download `BioUnlock.exe` and run it. It installs itself — one
-file, no separate script:
+file, no separate script — through a small setup wizard:
 
 ```powershell
 .\BioUnlock.exe install
 ```
 
-It copies the app to `%LOCALAPPDATA%\BioUnlock`, adds it to Start-up, creates a
-Start Menu shortcut, and launches the tray icon. No admin rights are needed for
-that. It then asks once for elevation (**one UAC prompt**) to register the
-bundled Windows Credential Provider, which powers logon-screen unlock; declining
-just skips that step. If Windows **Smart App Control** blocks the unsigned
-`.exe`, install from source with
+The wizard lets you choose sign-in unlock, start-at-login, the Start Menu
+shortcut, and the post-install launch, then shows each step as it runs. It
+copies the app to `%LOCALAPPDATA%\BioUnlock` and launches the tray icon. No
+admin rights are needed for that. If sign-in unlock stays enabled, it then asks
+once for elevation (**one UAC prompt**) to register the bundled Windows
+Credential Provider and a SYSTEM startup task, which together power
+logon-screen unlock — including after a restart; declining shows a Retry button
+and just skips that step. That same prompt moves the agent's profile to
+`%ProgramData%\BioUnlock` and migrates an existing link automatically. For
+scripted installs use `BioUnlock.exe install --silent`. If Windows **Smart App
+Control** blocks the unsigned `.exe`, install from source with
 `powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource` (it
 launches via `pythonw.exe`, which Smart App Control allows).
 
@@ -83,16 +88,17 @@ token could try to enroll a device.
 
 ### 1. Host the backend
 
-The only secret you must set is your **API token**. Everything else — the
-database, the signing key, and the WebAuthn relying-party domain — is detected
+For deployment, set both the **owner API token** and a stable **server signing
+key**. The database URL and WebAuthn relying-party domain can be detected
 automatically.
 
 **Vercel (recommended, serverless):** import this repo, set the project's **Root
-Directory** to `server`, **connect a database** (Storage tab), and add one
-environment variable for the API key:
+Directory** to `server`, **connect a database** (Storage tab), and add both
+required secrets:
 
 ```
 BIO_API_TOKEN = <your-secret>
+BIO_SIGNING_KEY = <stable-ed25519-private-key-pem>
 ```
 
 Then run the migrations once against that database. Full steps:
@@ -100,7 +106,7 @@ Then run the migrations once against that database. Full steps:
 
 **Any small VM:** see [`server/README.md`](server/README.md#run-on-a-vm).
 
-Generate a token with:
+Generate the API token with:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -120,7 +126,8 @@ and build troubleshooting.
 ### 3. Windows app
 
 Install `BioUnlock.exe` — it is self-installing (per-user, no admin needed) and
-bundles the Credential Provider, which it registers after one UAC prompt. Then in
+bundles the Credential Provider plus a SYSTEM startup task, both registered after
+one UAC prompt so logon-screen unlock keeps working after a restart. Then in
 the tray app enter the backend **URL** and **API key** and click **Link this PC**,
 scanning the QR code with the phone. The API key is needed because linking
 enrolls the PC through the backend's `POST /devices/enroll` endpoint, which your
@@ -141,8 +148,9 @@ Set `BIO_API_TOKEN` in three places — that is the only shared secret:
 The phone sends it as `Authorization: Bearer <token>` on every owner call, and
 the PC agent sends it once when enrolling, then authenticates with its own signed
 device key. In production the server refuses owner endpoints if the token is
-unset (fail closed). HTTP is allowed only for development hosts; production must
-be HTTPS.
+unset (fail closed). Packaged mobile and Windows apps require HTTPS. Mobile
+debug builds allow private-LAN HTTP; PC source runs require the explicit
+`BIOUNLOCK_ALLOW_INSECURE_HTTP=1` development opt-in.
 
 ## Build from source
 

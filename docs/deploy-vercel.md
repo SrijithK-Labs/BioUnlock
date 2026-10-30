@@ -39,21 +39,18 @@ git ls-files | Select-String -Pattern '\.env$|\.pem$|\.key$|signing'
 
 ## Environment variables
 
-Only the **Postgres integration** is actually required. Connect it and the app
-does the rest — no other env vars are needed:
+Connect Postgres and configure both required secrets:
 
 | Variable | Required? | Notes |
 | --- | --- | --- |
 | *(Postgres integration)* | **yes** | In the **Storage** tab, connect a Postgres database; the connection string is auto-detected (see caveat 1) |
 | `BIO_DATABASE_URL` | optional | Override the auto-detected database URL |
-| `BIO_SIGNING_KEY` | optional | The server key is generated and stored in the database by default (see caveat 2) |
+| `BIO_SIGNING_KEY` | **yes** | Stable Ed25519 private key from a deployment secret store; generate once and retain it across deploys |
 | `BIO_RP_ID` | optional | Defaults to `auto`: derived from the request host |
 | `BIO_ALLOWED_ORIGINS` | optional | Extra origins; the current host and the Android app origin are added automatically |
-| `BIO_ENVIRONMENT` | optional | Auto-set from Vercel's `VERCEL_ENV` (keeps `/docs` private in production) |
-| `BIO_SECRET_KEY` | recommended | Not a root of trust, but must not be the default |
-| `BIO_API_TOKEN` | recommended | Shared bearer secret the mobile app sends on all owner endpoints and the PC agent sends when enrolling; **required** in production (owner endpoints refuse to serve without it) |
+| `BIO_ENVIRONMENT` | optional | Defaults to production; on Vercel it follows `VERCEL_ENV` unless explicitly set |
+| `BIO_API_TOKEN` | **yes** | Shared bearer secret for owner endpoints and enrollment; without it those endpoints fail closed |
 | `BIO_CORS_ORIGINS` | optional | Browser tooling only |
-| `BIO_COOKIE_SECURE` | optional | `true` behind HTTPS |
 
 ## Caveats
 
@@ -75,11 +72,11 @@ does the rest — no other env vars are needed:
    (If the direct/unpooled host will not resolve, use the pooled host — it works
    for DDL too.)
 
-2. **The server signing key stays stable with no setup.** PC agents pin this
-   Ed25519 key at pairing, so it must not change across restarts/deploys. The app
-   generates a key on first use and stores it in the `server_config` row, so it
-   survives cold starts automatically. To inject your own instead (e.g. from a
-   secret manager), set `BIO_SIGNING_KEY` to the PEM (literal `\n` accepted).
+2. **The server signing key must stay stable.** Generate an Ed25519 private key
+   once with `python -c "from app.core.security import ServerSigningKey; print(ServerSigningKey.generate().to_pem())"`
+   and store it as `BIO_SIGNING_KEY` in Vercel's encrypted environment variables.
+   Never regenerate it during deploys: paired PCs pin its public identity and
+   would require re-pairing if it changes.
 
 3. **WebSockets.** The agent's primary channel is a WebSocket with an automatic
    REST `inbox` fallback, so delivery keeps working even if the platform does
@@ -95,4 +92,5 @@ cd server
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-with a local `server/.env` (SQLite and a file-based signing key are fine there).
+with a local `server/.env` (SQLite and a development database key are fine for
+local testing). Deployed instances must use a stable `BIO_SIGNING_KEY` secret.

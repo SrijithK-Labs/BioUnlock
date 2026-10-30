@@ -19,8 +19,9 @@ pieces implement this:
 1. **Enrollment (once, user session).** `python -m biounlock_agent set-credential`
    prompts for the Windows password and stores it DPAPI-protected in
    *current-user* scope at `%LOCALAPPDATA%\BioUnlock\windows_credential.bin`
-   (or, when the boot-start service is installed, *machine* scope at
-   `%ProgramData%\BioUnlock\windows_credential.bin` — see "Pre-login support").
+   (or, once the installer has switched the PC to the shared profile, *machine*
+   scope at `%ProgramData%\BioUnlock\windows_credential.bin` — see "Pre-login
+   support").
 2. **Approval.** The phone approves a `remote_unlock`. The agent verifies the
    server-signed envelope exactly as before (signature, PC binding, freshness,
    replay) and acknowledges it `verified`.
@@ -38,35 +39,58 @@ pieces implement this:
    the agent calls `LockWorkStation()` directly (reporting `already_locked` when
    the workstation is already locked, or `lock_failed` on error).
 
-## Pre-login support (boot-start service)
+## Pre-login support (SYSTEM startup task)
 
-The flow above runs in the user's session, so it only works **after** someone
-logs in. To unlock at the **sign-in screen after a reboot**, BioUnlock installs
-the agent as a boot-start Windows service (`biounlock_agent/service.py`) that:
+The flow above runs in the user's session, so on its own it only works **after**
+someone logs in. To unlock at the **sign-in screen after a restart**, the
+installer also registers a Windows **scheduled task**, in the same single UAC
+prompt that registers the provider:
 
-- runs as **LocalSystem** and starts before anyone signs in;
-- uses the machine-wide home `%ProgramData%\BioUnlock` with DPAPI **machine**-scope
-  secrets, so the device key and Windows credential written by the in-session tray
-  are readable before login;
-- runs the agent **only while no interactive user is signed in**. When a user logs
-  on it hands control to the tray, which is the only process that can lock the
-  interactive desktop. The two never run at once.
+| Property | Value |
+| --- | --- |
+| Task name | `BioUnlockAgent` |
+| Run as | `SYSTEM`, highest privileges |
+| Trigger | at startup |
+| Action | `%ProgramFiles%\BioUnlock\BioUnlock.exe service-run` |
+| Settings | no execution time limit, ignore new instances, restart 3× a minute after a failure |
 
-Install / uninstall (both require an **elevated** PowerShell):
+`service-run` (`biounlock_agent/service.py`, `run_foreground`) is a small
+supervisor loop, not a Windows service:
 
-```powershell
-# from pc-agent/
-powershell -ExecutionPolicy Bypass -File install-service.ps1
-powershell -ExecutionPolicy Bypass -File uninstall-service.ps1
-```
+- it uses the machine-wide home `%ProgramData%\BioUnlock` with DPAPI
+  **machine**-scope secrets, so the device key and Windows credential written
+  by the in-session tray are readable before anyone logs in;
+- it runs the agent **only while no session has a signed-in user**;
+- a locked desktop and a disconnected RDP session both still count as signed
+  in, so the tray keeps the agent and the task idles. Only a sign-out (or
+  shutdown) hands control back to the task. At sign-in the hand-off takes at
+  most a couple of seconds; a brief overlap is harmless because both agents
+  share one replay store and the Windows lock is idempotent;
+- if the agent exits unexpectedly it is restarted after a few seconds.
 
-`install-service.ps1` creates `%ProgramData%\BioUnlock` (SYSTEM/Administrators
-full, Users modify), writes the `service.json` marker, and registers/starts the
-`BioUnlockAgent` service. The marker makes `config.service_mode()` true, so the
-tray transparently switches to the shared home and machine-scope secrets too.
+The `BioUnlock.exe install` step (the wizard's Install page) copies the agent
+and credential provider to `%ProgramFiles%\BioUnlock` with SYSTEM/admin write
+and standard-user read/execute permissions. It and `install-agent.ps1` perform
+the profile move automatically: it copies
+`config.json`, re-protects `device_key.bin`, `api_token.bin`, and
+`windows_credential.bin` to machine scope, and writes the `service.json` marker
+**last**. Until the marker exists the agent keeps using
+the per-user directory, so an interrupted migration changes nothing. The
+per-user files are kept for rollback, and an existing enrollment, link, and
+stored Windows password carry over — **no re-linking and no repeated
+`set-credential` are needed**.
 
-Because the home moves, **re-link the tray and re-run `set-credential` once after
-installing**, then reboot and unlock from the phone at the sign-in screen.
+The marker makes `config.service_mode()` true, so the tray transparently
+switches to the shared home and machine-scope secrets too.
+
+Source-based LocalSystem service installation is disabled. A service importing
+Python code from a user-writable checkout would allow privilege escalation.
+`uninstall-service.ps1` exists only to remove legacy installations safely.
+
+To remove the packaged install, run `uninstall-agent.ps1`; it stops and
+unregisters the `BioUnlockAgent` task (one UAC prompt, or pass
+`-KeepSystemAgent` to keep it) and leaves `%ProgramData%\BioUnlock` in place so
+the enrollment survives.
 
 ## Trust and failure rules
 
@@ -81,20 +105,24 @@ installing**, then reboot and unlock from the phone at the sign-in screen.
 ## Interface between the native provider and the Python agent
 
 ```
-agent (user session)                         provider (SYSTEM, secure desktop)
-  verify envelope                              watch %ProgramData%\BioUnlock\
-  -> write unlock_ticket.bin  ------------->     unlock_ticket.bin (machine DPAPI)
-     (machine DPAPI, TTL)                        parse + validate TTL
-                                                 CredentialsChanged -> auto-submit
+agent (tray, or the SYSTEM task before login)   provider (SYSTEM, secure desktop)
+  verify envelope                                watch %ProgramData%\BioUnlock\
+  -> write unlock_ticket.bin  ------------->       unlock_ticket.bin (machine DPAPI)
+     (machine DPAPI, TTL)                          parse + validate TTL
+                                                   CredentialsChanged -> auto-submit
 ```
 
 ## Security invariants
 
 - Normal Windows sign-in always remains available.
 - The Windows credential is stored **only** locally, DPAPI-protected, and is
-  never transmitted; the server and phone never see it.
-- Tickets are short-lived and machine-scope DPAPI; the machine-wide ticket
-  directory holds no long-term secret.
+  never transmitted; the server and phone never see it. With pre-login unlock
+  enabled the protection is machine scope, so SYSTEM and local administrators on
+  that PC can technically decrypt it. The shared directory ACL also grants
+  access to the installing account, but not other standard Windows accounts.
+- Tickets are short-lived and machine-scope DPAPI. The shared directory also
+  contains long-term secrets, so its ACL is restricted to SYSTEM, local
+  administrators, and the installing account.
 - No keyboard/mouse injection into the logon UI.
 - No LSASS tampering; no undocumented APIs.
 - The agent fails closed when signature, freshness, or binding cannot be

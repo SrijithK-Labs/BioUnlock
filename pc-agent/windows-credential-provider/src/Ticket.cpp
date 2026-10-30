@@ -10,6 +10,32 @@ namespace {
 constexpr BYTE kMagic[16] = {'B', 'I', 'O', 'U', 'N', 'L', 'O', 'C', 'K',
                              '-', 'T', 'I', 'C', 'K', 'E', 'T'};
 constexpr uint32_t kTicketVersion = 1;
+constexpr unsigned long long kMaxTicketTtlSeconds = 300;
+constexpr unsigned long long kTicketClockSkewSeconds = 30;
+
+struct SensitiveBuffer {
+    explicit SensitiveBuffer(std::string value) : value(std::move(value)) {}
+    SensitiveBuffer(const SensitiveBuffer&) = delete;
+    SensitiveBuffer& operator=(const SensitiveBuffer&) = delete;
+    SensitiveBuffer(SensitiveBuffer&& other) noexcept : value(std::move(other.value)) {}
+    SensitiveBuffer& operator=(SensitiveBuffer&& other) noexcept {
+        if (this != &other) {
+            Wipe();
+            value = std::move(other.value);
+        }
+        return *this;
+    }
+    ~SensitiveBuffer() { Wipe(); }
+
+    void Wipe() {
+        if (!value.empty()) {
+            SecureZeroMemory(value.data(), value.size());
+            value.clear();
+        }
+    }
+
+    std::string value;
+};
 
 std::wstring ProgramDataDir() {
     wchar_t buffer[MAX_PATH] = {};
@@ -78,7 +104,7 @@ std::optional<std::string> ReadFileBytes(const std::wstring& path) {
     return data;
 }
 
-std::optional<std::string> Unprotect(const std::string& blob) {
+std::optional<SensitiveBuffer> Unprotect(const std::string& blob) {
     if (blob.size() < 4) {
         return std::nullopt;
     }
@@ -92,7 +118,7 @@ std::optional<std::string> Unprotect(const std::string& blob) {
     std::string result(reinterpret_cast<char*>(out.pbData), out.cbData);
     SecureZeroMemory(out.pbData, out.cbData);
     LocalFree(out.pbData);
-    return result;
+    return SensitiveBuffer(std::move(result));
 }
 
 }  // namespace
@@ -119,7 +145,7 @@ std::optional<TicketData> ReadUnlockTicket() {
         return std::nullopt;
     }
 
-    const std::string& buffer = *data;
+    const std::string& buffer = data->value;
     if (buffer.size() < sizeof(kMagic) + sizeof(uint32_t) + 2 * sizeof(uint64_t)) {
         return std::nullopt;
     }
@@ -161,7 +187,9 @@ std::optional<TicketData> ReadUnlockTicket() {
     }
 
     const unsigned long long now = static_cast<unsigned long long>(time(nullptr));
-    if (ticket.expiresAt <= now) {
+    if (ticket.issuedAt > now + kTicketClockSkewSeconds || ticket.expiresAt <= now ||
+        ticket.expiresAt <= ticket.issuedAt ||
+        ticket.expiresAt - ticket.issuedAt > kMaxTicketTtlSeconds) {
         return std::nullopt;
     }
     return ticket;

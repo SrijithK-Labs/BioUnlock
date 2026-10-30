@@ -20,6 +20,23 @@ void main() {
     expect(info.rpId, 'example.com');
   });
 
+  test('requests do not follow redirects', () async {
+    var followRedirects = true;
+    final client = ApiClient(
+      baseUrl: 'https://example.com',
+      apiToken: 'test-token',
+      httpClient: routedClient({
+        'GET /api/v1/server/info': (request) {
+          followRedirects = request.followRedirects;
+          return http.Response('', 302, headers: {'location': 'https://other.example'});
+        },
+      }),
+    );
+
+    await expectLater(client.serverInfo(), throwsA(isA<ApiException>()));
+    expect(followRedirects, isFalse);
+  });
+
   test('parses structured error bodies', () async {
     final client = ApiClient(
       baseUrl: 'https://example.com',

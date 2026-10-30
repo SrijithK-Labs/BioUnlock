@@ -37,7 +37,7 @@ def settings(tmp_path: Path) -> Settings:
 
 @pytest.fixture()
 def app(settings: Settings):
-    application = create_app(settings)
+    application = create_app(settings, allow_unauthenticated_api_for_tests=True)
     Base.metadata.create_all(application.state.engine)
     yield application
     application.state.engine.dispose()

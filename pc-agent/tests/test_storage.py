@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
+from biounlock_agent import storage
 from biounlock_agent.config import ENV_MACHINE_SECRETS
 from biounlock_agent.storage import (
     DpapiSecretStore,
@@ -46,6 +49,14 @@ def test_default_secret_store_follows_service_mode(monkeypatch, home):
     store = default_secret_store(home)
     if isinstance(store, DpapiSecretStore):
         assert store._machine is True
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows secret storage policy")
+def test_windows_without_dpapi_fails_closed(monkeypatch, home):
+    monkeypatch.setattr(storage, "dpapi_available", lambda: False)
+
+    with pytest.raises(RuntimeError, match="Windows DPAPI is required"):
+        storage.default_secret_store(home)
 
 
 @pytest.mark.skipif(not dpapi_available(), reason="Windows DPAPI (pywin32) is not available")

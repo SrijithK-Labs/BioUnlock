@@ -7,9 +7,13 @@ never disabled by this client.
 
 from __future__ import annotations
 
+import ipaddress
+import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -19,6 +23,47 @@ from biounlock_agent.errors import ApiError, NotEnrolledError
 DEFAULT_TIMEOUT_SECONDS = 15.0
 DEVICE_AUTH_TTL_SECONDS = 300
 API_PREFIX = "/api/v1"
+ALLOW_INSECURE_HTTP_ENV = "BIOUNLOCK_ALLOW_INSECURE_HTTP"
+
+
+def validate_server_url(server_url: str) -> None:
+    """Reject unsafe server URLs before sending credentials or device auth."""
+    parsed = urlsplit(server_url)
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in ("", "/")
+    ):
+        raise ValueError("Server URL must contain only a scheme and host.")
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme != "http" or getattr(sys, "frozen", False):
+        raise ValueError("Use HTTPS for the server URL.")
+    allow_insecure_http = os.environ.get(ALLOW_INSECURE_HTTP_ENV, "").strip().lower()
+    if allow_insecure_http not in {"1", "true", "yes", "on"}:
+        raise ValueError(
+            f"HTTP is disabled; set {ALLOW_INSECURE_HTTP_ENV}=1 only for local development."
+        )
+
+    host = parsed.hostname.lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        return
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError as exc:
+        raise ValueError("HTTP is allowed only for localhost or a private IP during development.") from exc
+    if address.is_loopback:
+        return
+    if isinstance(address, ipaddress.IPv4Address) and (
+        address in ipaddress.ip_network("10.0.0.0/8")
+        or address in ipaddress.ip_network("172.16.0.0/12")
+        or address in ipaddress.ip_network("192.168.0.0/16")
+    ):
+        return
+    raise ValueError("HTTP is allowed only for localhost or a private IP during development.")
 
 
 @dataclass(frozen=True)
@@ -60,9 +105,9 @@ class ApiClient:
         api_token: str | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         transport: httpx.BaseTransport | None = None,
-        verify: bool = True,
         clock=time.time,
     ) -> None:
+        validate_server_url(server_url)
         self.server_url = server_url.rstrip("/")
         self._private_key = private_key
         self._device_id = device_id
@@ -73,7 +118,7 @@ class ApiClient:
             base_url=self.server_url + API_PREFIX,
             timeout=timeout,
             transport=transport,
-            verify=verify,
+            verify=True,
             headers={"Accept": "application/json"},
         )
 
@@ -149,7 +194,7 @@ class ApiClient:
         headers: dict[str, str] = {}
         if auth:
             headers = self._device_auth_header()
-        elif self._api_token:
+        elif self._api_token and path == "/devices/enroll":
             # Enrollment (the only non-device call that needs credentials) is
             # guarded by the server's shared API token.
             headers = {"Authorization": f"Bearer {self._api_token}"}

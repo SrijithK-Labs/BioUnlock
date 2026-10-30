@@ -1,12 +1,7 @@
-"""Server identity persistence.
+"""Stable server signing identity for tests and development.
 
-The server's Ed25519 signing key is the root of trust PC agents pin during
-pairing, so it must stay stable across restarts and deploys. Rather than rely
-on an env var or a file (which does not survive on serverless hosts), the key
-is stored in the database (``server_config``), generated once on first use.
-
-``BIO_SIGNING_KEY`` still takes precedence when set, which is handy for local
-development or for injecting a key from a secret manager.
+Deployed environments must load ``BIO_SIGNING_KEY`` from a secret store. Only
+development and explicit test harnesses may persist a generated key in the DB.
 """
 
 from __future__ import annotations
@@ -17,7 +12,7 @@ import os
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.security import SIGNING_KEY_ENV, ServerSigningKey
+from app.core.security import SIGNING_KEY_ENV, ServerSigningKey, SigningKeyError
 from app.models import ServerConfig
 
 logger = logging.getLogger(__name__)
@@ -27,11 +22,27 @@ SERVER_CONFIG_ID = 1
 
 def load_or_create_signing_key(
     session_factory: sessionmaker[Session],
+    *,
+    require_external: bool = False,
 ) -> ServerSigningKey:
     """Return the server signing key, storing a new one in the DB if absent."""
     env_pem = os.environ.get(SIGNING_KEY_ENV)
     if env_pem:
-        return ServerSigningKey.from_pem(env_pem)
+        key = ServerSigningKey.from_pem(env_pem)
+        if require_external:
+            try:
+                with session_factory() as session:
+                    row = session.get(ServerConfig, SERVER_CONFIG_ID)
+                    if row is not None and row.signing_key_pem is not None:
+                        row.signing_key_pem = None
+                        session.commit()
+            except SQLAlchemyError as exc:
+                raise SigningKeyError(
+                    "Could not remove the legacy database signing key."
+                ) from exc
+        return key
+    if require_external:
+        raise SigningKeyError(f"{SIGNING_KEY_ENV} is required in deployed environments.")
 
     try:
         with session_factory() as session:

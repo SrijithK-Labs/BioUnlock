@@ -36,6 +36,11 @@ a = Analysis(
         # pystray picks its backend dynamically; make the Win32 one explicit.
         "pystray._win32",
         "PIL._tkinter_finder",
+        # The pre-login runner is imported lazily by the "service-run" command.
+        "biounlock_agent.service",
+        # The setup wizard is imported lazily so the tray never pays for Tk.
+        "biounlock_agent.installer_ui",
+        "biounlock_agent.theme",
         # segno is imported lazily when pairing, so PyInstaller cannot see it.
         *collect_submodules("segno"),
     ],

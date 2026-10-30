@@ -42,6 +42,7 @@ from app.schemas import (
     AuthenticationCompleteRequest,
     AuthRequestOut,
 )
+from app.services.challenges import consume_challenge
 from app.services.events import record_event
 from app.services.ids import new_uuid
 from app.services.requests import as_utc, build_envelope, status_value
@@ -155,6 +156,10 @@ async def create_auth_request(
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Challenge expired.")
 
     device = _require_active_device_for_request(db, payload.pc_id)
+    if not consume_challenge(db, challenge.id):
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Challenge already used or expired.")
+    db.commit()
 
     assertion = payload.assertion
     assertion_id = assertion.get("id")
@@ -188,8 +193,6 @@ async def create_auth_request(
 
     credential.sign_count = result.new_sign_count
     credential.last_used_at = utcnow()
-    challenge.used_at = utcnow()
-
     auth_request = AuthRequest(
         id=new_uuid(),
         pc_id=device.id,

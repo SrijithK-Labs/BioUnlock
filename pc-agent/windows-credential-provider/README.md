@@ -42,9 +42,10 @@ Output: `build\BioUnlockProvider.dll` (x64).
 
 `tests\selftest.cpp` loads the built DLL, instantiates the provider through
 `DllGetClassObject`, and drives `GetCredentialCount` / `GetSerialization`. With a
-valid ticket in `%ProgramData%\BioUnlock` it reports the credential and the
-serialized buffer; without one it offers nothing. This validates the COM
-plumbing without registering anything or touching the lock screen.
+valid ticket in `%ProgramData%\BioUnlock` it reports the credential count and
+serialization size; without one it offers nothing. It does not print the
+serialized credential. This validates the COM plumbing without registering
+anything or touching the lock screen.
 
 ## Install / uninstall (administrator)
 
@@ -58,17 +59,23 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1
 python -m biounlock_agent clear-credential
 ```
 
+If the elevated PowerShell runs under a different administrator account, pass
+the intended user's SID with `-InstallUserSid`; obtain it by running `whoami
+`whoami /user` in that user's session. The packaged installer captures the original
+user SID before requesting elevation.
+
 ## Security trade-offs
 
 - The Windows password **is** stored locally (DPAPI current-user scope), a
   deliberate departure from the MVP rule "no Windows password is ever stored".
   It is required for a real unlock and is documented in
   `docs/windows-authentication.md`.
-- While a ticket exists (seconds), it is readable by SYSTEM/Administrators and,
-  because tickets are machine-scope DPAPI, by any local process on the machine.
-  It is short-lived and single-use to limit this window.
-- `%ProgramData%\BioUnlock` is writable by `Users` so the per-user agent can
-  publish tickets; it holds no long-term secret.
+- While a ticket exists (seconds), SYSTEM, local administrators, and the
+   installing account can access it. Machine-scope DPAPI is not a boundary
+   against those principals.
+- `%ProgramData%\BioUnlock` is ACL-restricted to SYSTEM, local administrators,
+   and the installing account. It contains long-term machine-scope secrets as
+   well as the short-lived ticket.
 
 ## Recovery
 

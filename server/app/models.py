@@ -1,8 +1,8 @@
 """SQLAlchemy models for the BioUnlock backend.
 
 All identifiers use UUIDs (stored as 36-char strings for SQLite/PostgreSQL
-portability). Secrets are never stored in plaintext: pairing codes are stored
-as hashes.
+portability). Pairing codes are stored as hashes; protect the database and
+backups because they contain authentication and device state.
 """
 
 from __future__ import annotations

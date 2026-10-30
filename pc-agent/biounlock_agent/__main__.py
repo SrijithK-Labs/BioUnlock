@@ -4,6 +4,7 @@ Usage::
 
     python -m biounlock_agent tray
     python -m biounlock_agent install
+    python -m biounlock_agent service-run
     python -m biounlock_agent enroll --server-url https://unlock.example.com --token <api-token>
     python -m biounlock_agent set-credential
     python -m biounlock_agent run
@@ -17,6 +18,7 @@ import argparse
 import asyncio
 import getpass
 import json
+import logging
 import os
 import sys
 
@@ -24,7 +26,10 @@ from biounlock_agent import __version__, unlock
 from biounlock_agent.agent import Agent
 from biounlock_agent.config import default_home
 from biounlock_agent.errors import AgentError
+from biounlock_agent.installer import InstallOptions
 from biounlock_agent.logging_setup import configure_logging
+
+logger = logging.getLogger(__name__)
 
 
 def _print_qr(payload: str) -> bool:
@@ -43,7 +48,7 @@ def _cmd_enroll(args: argparse.Namespace) -> int:
     agent = Agent()
     try:
         enrollment = agent.enroll(args.server_url, device_name=args.name, api_token=args.token)
-    except AgentError as exc:
+    except (AgentError, ValueError) as exc:
         print(f"Enrollment failed: {exc}", file=sys.stderr)
         agent.close()
         return 1
@@ -108,14 +113,7 @@ def _cmd_set_credential(args: argparse.Namespace) -> int:
     domain = args.domain
     if domain is None:
         domain = os.environ.get("USERDOMAIN") or os.environ.get("COMPUTERNAME") or ""
-    if args.password is not None:
-        password = args.password
-        print(
-            "Warning: --password may be recorded in your shell history; prefer the prompt.",
-            file=sys.stderr,
-        )
-    else:
-        password = getpass.getpass(f"Windows password for {username}: ")
+    password = getpass.getpass(f"Windows password for {username}: ")
     if not password:
         print("Refusing to store an empty password.", file=sys.stderr)
         return 1
@@ -136,15 +134,55 @@ def _cmd_clear_credential(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_install(args: argparse.Namespace) -> int:
+def _run_install(options: InstallOptions, *, quiet: bool) -> int:
+    """Run the install, using the wizard unless this is a scripted run."""
     from biounlock_agent import installer
 
-    return installer.install_app(
+    def console() -> int:
+        return installer.install_app(
+            provider=options.provider,
+            autostart=options.autostart,
+            shortcut=options.shortcut,
+            start=options.start,
+        )
+
+    if quiet or not installer.is_frozen():
+        return console()
+
+    try:
+        from biounlock_agent.installer_ui import InstallerUiUnavailable, run_installer
+    except Exception:  # noqa: BLE001 - a broken Tk build still installs
+        logger.warning("Setup wizard unavailable; using the console installer.")
+        return console()
+
+    try:
+        result = run_installer(options)
+    except InstallerUiUnavailable:
+        logger.warning("Setup wizard could not start; using the console installer.")
+        return console()
+    if result is None:
+        return 0
+    return 0 if result.ok else 1
+
+
+def _cmd_install(args: argparse.Namespace) -> int:
+    if args.silent:
+        os.environ["BIOUNLOCK_INSTALLER_QUIET"] = "1"
+    options = InstallOptions(
         provider=not args.no_provider,
         autostart=not args.no_autostart,
         shortcut=not args.no_shortcut,
         start=not args.no_launch,
     )
+    quiet = bool(
+        args.silent
+        or os.environ.get("BIOUNLOCK_INSTALLER_QUIET")
+        or args.no_provider
+        or args.no_autostart
+        or args.no_shortcut
+        or args.no_launch
+    )
+    return _run_install(options, quiet=quiet)
 
 
 def _cmd_tray(args: argparse.Namespace) -> int:
@@ -158,6 +196,12 @@ def _cmd_tray(args: argparse.Namespace) -> int:
         return 1
 
     return tray_main()
+
+
+def _cmd_service_run(args: argparse.Namespace) -> int:
+    from biounlock_agent.service import run_foreground
+
+    return run_foreground()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -192,11 +236,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     setcred.add_argument("--username", default=None, help="Windows username (default: current user)")
     setcred.add_argument("--domain", default=None, help="Domain or computer name (default: detected)")
-    setcred.add_argument(
-        "--password",
-        default=None,
-        help="Windows password (omit to be prompted securely; passing it is insecure)",
-    )
     setcred.set_defaults(func=_cmd_set_credential)
 
     clearcred = sub.add_parser(
@@ -212,10 +251,21 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--no-autostart", action="store_true", help="Do not start the app at login")
     install.add_argument("--no-shortcut", action="store_true", help="Do not create a Start Menu shortcut")
     install.add_argument("--no-launch", action="store_true", help="Do not start the app after installing")
+    install.add_argument(
+        "--silent",
+        action="store_true",
+        help="Install without the setup wizard (for scripted installs)",
+    )
     install.set_defaults(func=_cmd_install)
 
     gui = sub.add_parser("tray", help="Launch the system tray application")
     gui.set_defaults(func=_cmd_tray)
+
+    prelogin = sub.add_parser(
+        "service-run",
+        help="Run the agent before login (launched by the SYSTEM startup task)",
+    )
+    prelogin.set_defaults(func=_cmd_service_run)
 
     return parser
 
@@ -229,7 +279,8 @@ def main(argv: list[str] | None = None) -> int:
         from biounlock_agent import installer
 
         if installer.should_self_install():
-            return installer.install_app()
+            quiet = bool(os.environ.get("BIOUNLOCK_INSTALLER_QUIET"))
+            return _run_install(InstallOptions(), quiet=quiet)
         return _cmd_tray(args)
     return args.func(args)
 

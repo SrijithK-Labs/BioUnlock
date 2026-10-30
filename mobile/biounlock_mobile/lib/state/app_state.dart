@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -66,11 +69,18 @@ class AppState extends ChangeNotifier {
     _apiToken = _cleanToken(await _tokenStore.readToken());
     final url = await store.readServerUrl();
     if (url != null && url.isNotEmpty) {
-      _api = ApiClient(baseUrl: url, apiToken: _apiToken, httpClient: _httpClient);
-      try {
-        _serverInfo = await _api!.serverInfo();
-      } on ApiException {
-        // Best effort; the app remains usable with the stored URL.
+      final normalized = _normalizeUrl(url);
+      if (normalized != null) {
+        _api = ApiClient(
+          baseUrl: normalized,
+          apiToken: _apiToken,
+          httpClient: _httpClient,
+        );
+        try {
+          _serverInfo = await _api!.serverInfo();
+        } on ApiException {
+          // Best effort; the app remains usable with the stored URL.
+        }
       }
     }
     _initialized = true;
@@ -141,8 +151,30 @@ class AppState extends ChangeNotifier {
       value = 'https://$value';
     }
     final uri = Uri.tryParse(value);
-    if (uri == null || uri.host.isEmpty) return null;
+    if (uri == null ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        (uri.scheme != 'https' && uri.scheme != 'http')) {
+      return null;
+    }
+    if (uri.scheme == 'http' && !_allowsCleartextHost(uri.host)) return null;
     return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
+  }
+
+  static bool _allowsCleartextHost(String host) {
+    if (kReleaseMode) return false;
+    final normalizedHost = host.toLowerCase();
+    if (normalizedHost == 'localhost' || normalizedHost.endsWith('.localhost')) {
+      return true;
+    }
+    final address = InternetAddress.tryParse(normalizedHost);
+    if (address == null || address.type != InternetAddressType.IPv4) return false;
+    final octets = address.rawAddress;
+    return octets[0] == 10 ||
+        (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31) ||
+        (octets[0] == 192 && octets[1] == 168);
   }
 
   static String _themeModeName(ThemeMode mode) => switch (mode) {

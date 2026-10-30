@@ -4,10 +4,13 @@ This is the agent half of the Windows logon integration (see
 ``docs/windows-authentication.md``). It is deliberately small so the security
 properties are easy to audit:
 
-- The user's Windows credential is stored **only** through Windows DPAPI in
-  *current-user* scope (``CryptoProtectData`` without ``LOCAL_MACHINE``). It can
-  be decrypted only by the same Windows user on the same machine, and it is
-  never written to ``config.json``, never logged, and never transmitted.
+- The user's Windows credential is stored **only** through Windows DPAPI. A
+  per-user install uses *current-user* scope (``CryptoProtectData`` without
+  ``LOCAL_MACHINE``), so it can be decrypted only by the same Windows user on
+  the same machine. Once pre-login unlock is enabled the installer moves the
+  profile to ``%ProgramData%\\BioUnlock`` and re-protects it with *machine*
+  scope, because the SYSTEM startup task has to read it before anyone signs in.
+  It is never written to ``config.json``, never logged, and never transmitted.
 - On a verified ``remote_unlock`` the agent mints a **single-use, short-lived
   ticket** next to the credential. The ticket is protected with DPAPI in
   *machine* scope so the native Credential Provider (which runs as SYSTEM on the
@@ -49,6 +52,7 @@ _TICKET_LEN = struct.Struct("<H")
 # notice it and for the user to reach the lock screen.
 DEFAULT_TICKET_TTL_SECONDS = 60
 MAX_TICKET_TTL_SECONDS = 300
+TICKET_CLOCK_SKEW_SECONDS = 30
 
 # CRYPTPROTECT_LOCAL_MACHINE from dpapi.h. pywin32's win32crypt does not expose
 # the flag constants, so the numeric values are used directly.
@@ -157,11 +161,25 @@ def ticket_path(home: Path) -> Path:
     return Path(home) / TICKET_FILENAME
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
+def _atomic_write(path: Path, data: bytes, *, attempts: int = 12) -> None:
+    """Write atomically, tolerating the credential provider reading the target.
+
+    The native provider opens the ticket every second and does not share delete
+    access, so ``os.replace`` can fail with a sharing violation for a few
+    milliseconds. Retrying keeps a ticket write from looking like a failure.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.tmp")
     tmp.write_bytes(data)
-    os.replace(tmp, path)
+    for attempt in range(attempts):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.1)
 
 
 def _encode_ticket(
@@ -312,15 +330,31 @@ def read_unlock_ticket(home: Path, *, now: float | None = None) -> dict | None:
     except Exception:  # noqa: BLE001 - treat a corrupt/unreadable ticket as absent
         return None
     current = int(now if now is not None else time.time())
-    if int(data.get("expires_at", 0)) <= current:
+    issued_at = int(data.get("issued_at", 0))
+    expires_at = int(data.get("expires_at", 0))
+    if (
+        issued_at > current + TICKET_CLOCK_SKEW_SECONDS
+        or expires_at <= current
+        or expires_at <= issued_at
+        or expires_at - issued_at > MAX_TICKET_TTL_SECONDS
+    ):
         return None
     return data
 
 
 def clear_unlock_ticket(home: Path) -> None:
     path = ticket_path(home)
-    if path.exists():
-        path.unlink()
+    # The provider may hold the ticket open for a moment; a failed delete only
+    # means a stale ticket, which carries its own expiry.
+    for attempt in range(10):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if attempt == 9:
+                logger.warning("Could not delete the pending unlock ticket; it will expire")
+                return
+            time.sleep(0.1)
 
 
 def reset_windows_credential(home: Path) -> None:

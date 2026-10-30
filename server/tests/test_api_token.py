@@ -1,6 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.core.security import ServerSigningKey
+from app.database import Base, create_engine_for_url
+from app.factory import create_app
 from tests.conftest import enroll_and_pair, enroll_device, register_passkey
 from tests.support.helpers import new_device_keypair
 
@@ -14,6 +18,23 @@ def _auth(token: str = TOKEN) -> dict[str, str]:
 def test_api_open_when_token_unset(client: TestClient) -> None:
     assert client.get("/api/v1/devices").status_code == 200
     assert client.get("/api/v1/webauthn/credentials").status_code == 200
+
+
+def test_test_environment_does_not_open_api_without_explicit_test_flag(
+    settings: Settings, monkeypatch
+) -> None:
+    settings.rate_limit_enabled = True
+    monkeypatch.setenv("BIO_SIGNING_KEY", ServerSigningKey.generate().to_pem())
+    engine = create_engine_for_url(settings.database_url)
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    application = create_app(settings)
+    Base.metadata.create_all(application.state.engine)
+    with TestClient(application) as test_client:
+        response = test_client.get("/api/v1/devices")
+    application.state.engine.dispose()
+
+    assert response.status_code == 500
 
 
 def test_management_endpoints_require_token(client: TestClient, settings: Settings) -> None:
@@ -66,7 +87,18 @@ def test_device_enrollment_requires_token(client: TestClient, settings: Settings
     assert enrolled.json()["device_id"]
 
 
-def test_production_fails_closed_without_token(client: TestClient, settings: Settings) -> None:
-    settings.environment = "production"
+@pytest.mark.parametrize("environment", ["production", "staging", "preview"])
+def test_non_dev_environment_fails_closed_without_token(
+    client: TestClient, settings: Settings, environment: str
+) -> None:
+    settings.environment = environment
+    settings.api_token = None
+    assert client.get("/api/v1/devices").status_code == 500
+
+
+def test_development_environment_fails_closed_without_token(
+    client: TestClient, settings: Settings
+) -> None:
+    settings.environment = "development"
     settings.api_token = None
     assert client.get("/api/v1/devices").status_code == 500

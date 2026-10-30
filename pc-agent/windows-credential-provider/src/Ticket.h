@@ -10,6 +10,12 @@ struct TicketData {
     std::wstring password;
     unsigned long long issuedAt = 0;
     unsigned long long expiresAt = 0;
+
+    ~TicketData() {
+        if (!password.empty()) {
+            SecureZeroMemory(password.data(), password.size() * sizeof(wchar_t));
+        }
+    }
 };
 
 // Full path to the unlock ticket file (%ProgramData%\BioUnlock\unlock_ticket.bin).

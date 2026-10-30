@@ -9,8 +9,8 @@ passkeys, pairs Windows PCs, and authorizes unlock/lock requests with a
 short-lived, single-use, Ed25519-signed envelope that the PC verifies
 independently. It is **single-owner**: no accounts, no sessions.
 
-The whole point of this service is to be small and boring to host. **The only
-secret you have to set is `BIO_API_TOKEN`.**
+The whole point of this service is to be small and boring to host. Set the owner
+API token and a stable server signing key as deployment secrets.
 
 ## Deploy to Vercel (recommended)
 
@@ -22,29 +22,33 @@ secret you have to set is `BIO_API_TOKEN`.**
    to this project. Vercel injects the connection string (often store-prefixed,
    e.g. `biounlockdb_DATABASE_URL`); the app detects it automatically, so you do
    **not** set a database URL by hand.
-4. **Add the API key.** Add one **Environment Variable**:
+4. **Add the deployment secrets.** Add these **Environment Variables**:
 
    | Name | Value |
    | --- | --- |
    | `BIO_API_TOKEN` | a long random string (see below) |
+   | `BIO_SIGNING_KEY` | stable Ed25519 private key PEM (generate once and retain) |
 
-   That is the only required variable. Optionally also set
-   `BIO_SECRET_KEY` and `BIO_ENVIRONMENT=production` (the latter is usually
-   inferred from `VERCEL_ENV`).
+   `BIO_ENVIRONMENT` follows `VERCEL_ENV` on Vercel and defaults to production.
 5. **Deploy.**
 6. **Run the migrations once** against the new database (see
    [Migrations](#migrations)). SQLite would not persist on Vercel, so this step
    is what creates your schema in Postgres.
 
-Generate a token with:
+Generate the API token with:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 Enter the same token in the phone app (**Settings → API token**) and the Windows
-agent (**Link this PC**). Without it, the server refuses every owner endpoint in
-production — so a misconfigured deploy fails closed.
+agent (**Link this PC**). Without it, the server refuses every owner endpoint
+in production — so a misconfigured deploy fails closed.
+Generate the signing key once from `server/` with:
+
+```bash
+python -c "from app.core.security import ServerSigningKey; print(ServerSigningKey.generate().to_pem())"
+```
 
 ## Run on a VM
 
@@ -53,30 +57,35 @@ Any small always-on host that runs Python 3.11+ works:
 ```bash
 cd server
 pip install -r requirements.txt
-export BIO_API_TOKEN=<your-secret>          # set only this secret
+export BIO_ENVIRONMENT=production         # explicit fail-closed deployment mode
+export BIO_API_TOKEN=<your-secret>          # shared owner API token
+export BIO_SIGNING_KEY=<stable-ed25519-pem>  # keep stable and private
 export BIO_DATABASE_URL=sqlite:///./biounlock.db   # optional; SQLite by default
 alembic upgrade head                         # create the schema
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-With SQLite and a file-based signing key this needs no other configuration. Put
-it behind HTTPS (the WebAuthn relying party must be an HTTPS origin).
+For local development, SQLite is sufficient. Put deployed instances behind
+HTTPS (the WebAuthn relying party must be an HTTPS origin).
 
 ## Environment variables
 
-Only `BIO_API_TOKEN` is required in production. Everything else has a safe
-default. See [`../.env.example`](../.env.example) for the full annotated list.
+`BIO_ENVIRONMENT` defaults to `production`; deployed environments require both
+`BIO_API_TOKEN` and `BIO_SIGNING_KEY`. Only an explicitly configured automated
+test harness may omit them. See [`../.env.example`](../.env.example) for the
+local development settings.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `BIO_API_TOKEN` | **yes** (production) | Shared bearer secret for owner endpoints and enrollment |
+| `BIO_API_TOKEN` | **yes** | Shared bearer secret for owner endpoints and enrollment |
+| `BIO_SIGNING_KEY` | **yes** (deployed) | Stable Ed25519 private key from a secret store |
 | `BIO_DATABASE_URL` | no | Overrides the auto-detected database URL |
-| `BIO_SIGNING_KEY` | no | The Ed25519 key is generated and stored in the DB on first use |
 | `BIO_RP_ID` | no | Defaults to `auto` (taken from the request host) |
 | `BIO_ALLOWED_ORIGINS` | no | Extra origins; the request host and the Android app origin are added automatically |
 | `BIO_ENVIRONMENT` | no | Auto-set from Vercel's `VERCEL_ENV`; keeps `/docs` off in production |
-| `BIO_SECRET_KEY` | recommended | Not a root of trust, but must not be the default |
-| `BIO_RATE_LIMIT_ENABLED` | no | In-process rate limiting (default on) |
+
+Rate limiting is always enabled outside the explicit test harness. Multi-worker
+and serverless deployments should also use a shared edge/proxy limiter.
 
 ## Migrations
 

@@ -1,9 +1,11 @@
 """Agent configuration and on-disk layout.
 
 Non-secret configuration lives in ``config.json`` under the agent home
-directory (``%LOCALAPPDATA%\\BioUnlock`` on Windows). Secrets (the device
-private key and the server API token used for enrollment) are kept separate
-and protected by :mod:`biounlock_agent.storage`.
+directory: ``%LOCALAPPDATA%\\BioUnlock`` for a per-user install, or
+``%ProgramData%\\BioUnlock`` once the installer has switched to the shared
+machine-wide profile used before login. Secrets (the device private key, the
+server API token, and the Windows credential) are kept separate and protected by
+:mod:`biounlock_agent.storage`.
 """
 
 from __future__ import annotations

@@ -18,7 +18,7 @@ def limited_client(tmp_path: Path):
         allowed_origins=["http://localhost:8000"],
         rate_limit_enabled=True,
     )
-    application = create_app(settings)
+    application = create_app(settings, allow_unauthenticated_api_for_tests=True)
     Base.metadata.create_all(application.state.engine)
     with TestClient(application) as client:
         yield client

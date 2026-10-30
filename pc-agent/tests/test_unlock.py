@@ -76,6 +76,24 @@ def test_ticket_ttl_is_capped(home):
     assert unlock.read_unlock_ticket(home, now=now + unlock.MAX_TICKET_TTL_SECONDS + 1) is None
 
 
+def test_ticket_reader_rejects_oversized_lifetime(home, monkeypatch):
+    now = int(time.time())
+    payload = unlock._encode_ticket(
+        request_id="r",
+        username="u",
+        domain="",
+        password="p",
+        issued_at=now,
+        expires_at=now + unlock.MAX_TICKET_TTL_SECONDS + 1,
+    )
+    path = unlock.ticket_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"mock-protected-ticket")
+    monkeypatch.setattr(unlock, "_unprotect", lambda _blob: payload)
+
+    assert unlock.read_unlock_ticket(home, now=now) is None
+
+
 def test_reset_clears_credential_and_ticket(home):
     unlock.save_windows_credential(home, unlock.WindowsCredential("u", "p"))
     unlock.issue_unlock_ticket(home, request_id="r", credential=unlock.WindowsCredential("u", "p"))

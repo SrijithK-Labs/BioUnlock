@@ -16,7 +16,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_RP_ID = "localhost"
 AUTO_RP_ID = "auto"
-DEFAULT_ENVIRONMENT = "development"
+DEFAULT_ENVIRONMENT = "production"
 DEFAULT_DATABASE_URL = "sqlite:///./biounlock.db"
 
 # Connection strings injected by hosted Postgres integrations (e.g. a database
@@ -91,19 +91,14 @@ class Settings(BaseSettings):
     environment: str = DEFAULT_ENVIRONMENT
     log_level: str = "INFO"
 
-    # Application secrets. ``secret_key`` must be replaced in production. It is
-    # not used as a root of trust for the auth protocol (Ed25519 keys are).
-    secret_key: str = "development-only-insecure-key-change-me"
-
     # Shared secret the mobile app presents as ``Authorization: Bearer <token>``
     # on every owner endpoint. The PC agent uses its own signed device
-    # credential instead, so it never needs this. Leaving it unset keeps the API
-    # open, which is only tolerated outside production.
+    # credential instead, so it never needs this. Only an explicit test harness
+    # may bypass owner-token enforcement.
     api_token: str | None = None
 
     database_url: str = DEFAULT_DATABASE_URL
     data_dir: str = "./data"
-    signing_key_path: str | None = None
 
     # Optional path to a Digital Asset Links file served at
     # ``/.well-known/assetlinks.json`` so Android can associate the mobile app
@@ -132,7 +127,6 @@ class Settings(BaseSettings):
 
     # Security toggles
     rate_limit_enabled: bool = True
-    cookie_secure: bool = False
 
     @field_validator("allowed_origins", "cors_origins", mode="before")
     @classmethod
@@ -169,13 +163,6 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.environment.lower() == "development"
-
-    @property
-    def resolved_signing_key_path(self) -> Path:
-        if self.signing_key_path:
-            return Path(self.signing_key_path)
-        return Path(self.data_dir) / "server_signing_key.json"
-
 
 @lru_cache
 def get_settings() -> Settings:

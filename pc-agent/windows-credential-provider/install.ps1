@@ -1,7 +1,9 @@
 # Requires elevation: registers a COM in-proc server and a credential provider.
 #Requires -RunAsAdministrator
 [CmdletBinding()]
-param()
+param(
+    [string]$InstallUserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -18,11 +20,14 @@ $targetDll = Join-Path $installDir "BioUnlockProvider.dll"
 Copy-Item -LiteralPath $sourceDll -Destination $targetDll -Force
 Write-Host "Installed DLL -> $targetDll"
 
-# Shared ticket directory: SYSTEM/Administrators full, Users modify so the
-# per-user agent can drop and clear its short-lived ticket.
+# Restrict the shared directory to SYSTEM, Administrators, and this installing
+# account. It contains machine-protected credentials as well as unlock tickets.
 $sharedDir = Join-Path $env:ProgramData "BioUnlock"
 New-Item -ItemType Directory -Force -Path $sharedDir | Out-Null
-icacls $sharedDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)M" | Out-Null
+$installSid = $InstallUserSid
+& icacls.exe $sharedDir /inheritance:r /remove:g "*S-1-5-32-545" /grant:r `
+    "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" ("*{0}:(OI)(CI)M" -f $installSid) | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Failed to secure the BioUnlock data directory." }
 Write-Host "Prepared shared directory -> $sharedDir"
 
 # COM in-proc server (64-bit view; LogonUI is 64-bit on 64-bit Windows).

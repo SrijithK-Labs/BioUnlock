@@ -37,9 +37,9 @@ without inbound ports or shared Wi-Fi/Bluetooth.
 | --- | --- |
 | Phone → Server | TLS + WebAuthn passkey assertion verified by the server |
 | Server → Phone | TLS; server authenticity is a trust-on-first-use decision by the user when they enter the URL / scan a pairing QR |
-| PC Agent → Server | TLS + device Ed25519 signature on every authenticated API call + per-session token |
+| PC Agent → Server | TLS + short-lived device Ed25519 signature on authenticated calls |
 | Server → PC Agent | Ed25519 signature over each authorization envelope, verified against a pinned server public key captured during pairing |
-| Phone → PC Agent | No direct channel; the agent only trusts a signed envelope from the server that binds account, PC, request id, and expiry |
+| Phone → PC Agent | No direct channel; the agent only trusts a signed envelope from the server that binds the single owner, PC, request id, and expiry |
 
 The **server signing key** is the root of truth for the PC agent. It is pinned
 exactly once during the enrollment/pairing flow, together with the backend URL.
@@ -52,18 +52,22 @@ with.
 1. **Phone** (authenticated, WebAuthn user) requests a challenge for a target
    PC: `POST /api/v1/auth/challenges`.
 2. **Server** stores a challenge (random bytes, expiry, client data) and returns
-   it bound to account + PC.
+   it bound to the target PC.
 3. **Phone** prompts the user with the platform passkey provider, then submits
    the assertion: `POST /api/v1/auth/requests`.
-4. **Server** verifies the WebAuthn assertion, authorizes account→PC ownership,
-   creates an `AuthRequest` (unique id, account, PC, challenge, expiry,
-   status=pending), and signs an *authorization envelope* with its Ed25519 key.
-5. **Delivery**: if the agent has an open outbound WebSocket, the envelope is
-   pushed. On reconnect, pending envelopes are pulled. No inbound ports.
+4. **Server** verifies the WebAuthn assertion for its single owner, confirms
+   the target PC is active, creates an `AuthRequest` (unique id, PC, challenge,
+   expiry, status=pending), and signs an *authorization envelope* with its
+   Ed25519 key. The wire format includes the constant owner id `biounlock`.
+5. **Delivery**: if the agent has an open, live outbound WebSocket, the envelope
+   is pushed. A socket that has gone silent past the keepalive window is treated
+   as dead, so the agent switches to polling the REST inbox and reconnects. On
+   reconnect, pending envelopes are pulled. No inbound ports.
 6. **PC agent** verifies the envelope signature against the pinned server key,
-   checks identifiers (its registered PC id, account match), expiry, and
-   replay/nonce. Then it proves the local "action condition" (currently: the
-   verified/delivered state, since native Windows logon is a later milestone).
+   checks identifiers (its registered PC id and owner id `biounlock`), expiry, and
+   replay/nonce. On a verified `remote_unlock` it mints a short-lived,
+   single-use ticket for the native Windows Credential Provider, which performs
+   the real unlock; `remote_lock` calls `LockWorkStation()`.
 7. **PC agent** acks `POST /api/v1/requests/{id}/ack` → status `verified`
    (or rejects → `rejected`).
 8. **Phone** polls `GET /api/v1/requests/{id}` until a terminal status and
@@ -76,6 +80,9 @@ with.
 - Envelope expired → rejected.
 - Envelope replayed/duplicate → rejected (unique id + nonce cache).
 - Device revoked / unpaired → agent rejects; server stops delivery.
+- Half-open socket (sleep/resume, Wi-Fi change, NAT timeout) → keepalive pings
+  and a silent-socket timeout force a reconnect while the REST inbox covers
+  delivery in the meantime.
 - Reconnect: the agent re-establishes WebSocket and re-registers presence.
 
 ## Key storage
@@ -83,6 +90,6 @@ with.
 | Secret | Where | Protection |
 | --- | --- | --- |
 | Passkey private keys | Phone TPM/secure element | platform (never in BioUnlock) |
-| Server signing key | Backend filesystem/env | file permissions; configurable path |
+| Server signing key | Deployment secret store (`BIO_SIGNING_KEY`) | encrypted platform secret storage; required in deployed environments |
 | PC device private key | Windows machine | DPAPI-protected file |
-| Session tokens | Backend DB | hashed at rest |
+| Owner API token | Server environment + phone secure storage | shared long-lived secret; rotate if exposed |

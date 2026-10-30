@@ -13,7 +13,7 @@ from biounlock_agent.errors import ApiError, NotEnrolledError
 
 
 def _client(handler, **kwargs) -> ApiClient:
-    return ApiClient("http://testserver", transport=httpx.MockTransport(handler), **kwargs)
+    return ApiClient("https://testserver", transport=httpx.MockTransport(handler), **kwargs)
 
 
 def test_server_info_parses_response():
@@ -33,6 +33,23 @@ def test_server_info_parses_response():
     info = _client(handler).server_info()
     assert info.server_signing_key_fingerprint == "FP"
     assert info.rp_id == "example.com"
+
+
+def test_server_info_does_not_send_enrollment_token():
+    def handler(request):
+        assert "authorization" not in request.headers
+        return httpx.Response(
+            200,
+            json={
+                "name": "BioUnlock",
+                "version": "0.1.0",
+                "rp_id": "example.com",
+                "server_signing_key_fingerprint": "FP",
+                "environment": "production",
+            },
+        )
+
+    _client(handler, api_token="secret-token").server_info()
 
 
 def test_enroll_sends_public_key(device_identity):
@@ -84,6 +101,38 @@ def test_enroll_sends_api_token(device_identity):
     client.enroll(name="PC")
 
     assert captured["auth"] == "Bearer secret-token"
+
+
+def test_public_http_server_url_is_rejected():
+    with pytest.raises(ValueError, match="HTTP is disabled"):
+        ApiClient("http://example.com")
+
+
+def test_private_http_server_url_requires_explicit_development_opt_in(monkeypatch):
+    from biounlock_agent.api_client import ALLOW_INSECURE_HTTP_ENV
+
+    with pytest.raises(ValueError, match="HTTP is disabled"):
+        ApiClient("http://192.168.1.10:8000")
+
+    monkeypatch.setenv(ALLOW_INSECURE_HTTP_ENV, "1")
+    client = ApiClient(
+        "http://192.168.1.10:8000",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200)),
+    )
+    client.close()
+
+
+def test_packaged_agent_rejects_http_server_url(monkeypatch):
+    from biounlock_agent import api_client
+
+    monkeypatch.setattr(api_client.sys, "frozen", True, raising=False)
+    with pytest.raises(ValueError, match="HTTPS"):
+        ApiClient("http://192.168.1.10:8000")
+
+
+def test_tls_verification_cannot_be_disabled():
+    with pytest.raises(TypeError):
+        ApiClient("https://example.com", verify=False)
 
 
 def test_heartbeat_uses_signed_device_credential(device_identity):

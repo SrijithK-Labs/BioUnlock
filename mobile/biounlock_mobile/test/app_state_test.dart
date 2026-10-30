@@ -69,6 +69,26 @@ void main() {
     expect(headers, ['Bearer stored-token']);
   });
 
+  test('init does not send stored token to an unsafe saved URL', () async {
+    var requests = 0;
+    final state = AppState(
+      store: InMemoryServerUrlStore(serverUrl: 'http://example.com'),
+      tokenStore: InMemoryApiTokenStore(token: 'stored-token'),
+      passkeyService: FakePasskeyService(),
+      httpClient: routedClient({
+        'GET /api/v1/server/info': (_) {
+          requests++;
+          return ok(serverInfoJson());
+        },
+      }),
+    );
+
+    await state.init();
+
+    expect(requests, 0);
+    expect(state.isConfigured, isFalse);
+  });
+
   test('configureServer accepts a plain http LAN url', () async {
     final store = InMemoryServerUrlStore();
     final state = AppState(
@@ -84,6 +104,18 @@ void main() {
     expect(succeeded, isTrue);
     expect(state.serverUrl, 'http://192.168.1.10:8000');
     expect(await store.readServerUrl(), 'http://192.168.1.10:8000');
+  });
+
+  test('configureServer rejects cleartext public server urls', () async {
+    final state = AppState(
+      store: InMemoryServerUrlStore(),
+      passkeyService: FakePasskeyService(),
+    );
+
+    final succeeded = await state.configureServer('http://example.com');
+
+    expect(succeeded, isFalse);
+    expect(state.error, isNotNull);
   });
 
   test('configureServer rejects an invalid url', () async {

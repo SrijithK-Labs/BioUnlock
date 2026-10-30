@@ -8,22 +8,16 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $SERVICE_NAME = "BioUnlockAgent"
 
 $service = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
 if ($service) {
     if ($service.Status -ne "Stopped") {
-        Stop-Service $SERVICE_NAME -Force
+        Stop-Service -Name $SERVICE_NAME -Force
     }
-    Push-Location $root
-    try {
-        & $Python -m biounlock_agent.service remove
-    }
-    finally {
-        Pop-Location
-    }
-    Write-Host "Service '$SERVICE_NAME' removed."
+    & sc.exe delete $SERVICE_NAME | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not delete the legacy service '$SERVICE_NAME'." }
+    Write-Host "Legacy service '$SERVICE_NAME' removed."
 }
 else {
     Write-Host "Service '$SERVICE_NAME' is not installed."

@@ -28,13 +28,22 @@ Download the prebuilt `BioUnlock.exe` from
 need Python or any build tools. **The one `.exe` installs everything.**
 
 1. Double-click `BioUnlock.exe` (or run `BioUnlock.exe install` from a
-   terminal). Because it is not installed yet, it sets itself up: it copies
-   itself to `%LOCALAPPDATA%\BioUnlock`, adds itself to Start-up, and creates a
-   Start Menu shortcut. No admin rights are needed for this part.
-2. It then asks once for elevation (**one UAC prompt**) to register the bundled
-   Windows Credential Provider — the component that unlocks the real logon
-   screen. Declining only skips logon-screen unlock; everything else still
-   installs.
+   terminal). Because it is not installed yet, it opens a small setup wizard:
+   **Welcome → Choose your setup → Install → Finish**. On the options page you
+   can turn off sign-in unlock, start-at-login, the Start Menu shortcut, or the
+   post-install launch. The wizard copies the app to `%LOCALAPPDATA%\BioUnlock`
+   and shows each finished step. No admin rights are needed for those parts.
+2. If you keep **Enable unlock at the Windows sign-in screen**, it then asks
+   once for elevation (**one UAC prompt**) to do the two things that make
+   logon-screen unlock work **after a restart**: register the bundled Windows
+   Credential Provider (the component that signs you in at the real logon
+   screen) and install a SYSTEM startup task that receives phone requests
+   before anyone has signed in. Declining returns to the finish page with a
+   **Retry** button; everything else still installs. The same step moves the
+   agent's profile to `%ProgramData%\BioUnlock` so the startup task and the tray
+   share one identity and one stored credential; an existing link, device key,
+   and Windows password are migrated automatically, so you do not have to link
+   the PC again.
 3. Click the tray icon, enter your backend URL and the **API key**, then
    **Link this PC** and scan the QR code with the phone app.
 
@@ -48,6 +57,21 @@ need Python or any build tools. **The one `.exe` installs everything.**
    **Set Windows password…** in the tray menu (or
    `python -m biounlock_agent set-credential`).
 
+For unattended/scripted installs, add `--silent` (or set
+`BIOUNLOCK_INSTALLER_QUIET=1`); the wizard is skipped and the result is printed
+to the console. Passing any `--no-*` flag also implies a scripted run.
+
+### What runs when
+
+| Situation | Who talks to the server |
+| --- | --- |
+| PC is at the sign-in screen (boot, or after a sign-out) | the `BioUnlockAgent` SYSTEM task running `%ProgramFiles%\BioUnlock\BioUnlock.exe service-run` |
+| A user is signed in, including a locked desktop | the tray in that session; the startup task idles |
+
+Only one of them normally runs the agent at a time. At sign-in the hand-off
+takes a second or two; a brief overlap is harmless because both share one
+replay store and locking is idempotent.
+
 If Windows **Smart App Control** blocks the unsigned `.exe`, install the source
 launcher instead (it runs with `pythonw.exe`, which Smart App Control allows):
 
@@ -56,7 +80,9 @@ powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource
 ```
 
 `install-agent.ps1` remains available for scripted installs; for a packaged
-`.exe` it simply runs `BioUnlock.exe install` with the matching flags.
+`.exe` it runs `BioUnlock.exe install --silent` with the matching flags (no
+wizard, no message boxes). The SYSTEM task executes only the protected copy in
+`%ProgramFiles%\BioUnlock`; standard users have read/execute access there.
 
 ## Uninstall
 
@@ -66,10 +92,12 @@ powershell -ExecutionPolicy Bypass -File uninstall-agent.ps1
 
 This stops the tray, removes the start-at-login entry and the Start Menu
 shortcut, and deletes `%LOCALAPPDATA%\BioUnlock` (the app, config, device key,
-stored Windows credential, replay DB, and logs). Use `-KeepData` to keep your
-data, or `-RemoveCredentialProvider` to also remove the Credential Provider
-(elevated). A boot-start service is removed separately with
-`uninstall-service.ps1` (admin).
+stored Windows credential, replay DB, and logs). It also removes the SYSTEM
+pre-login task (one UAC prompt; pass `-KeepSystemAgent` to keep it), and
+`-RemoveCredentialProvider` removes the Credential Provider and its protected
+Program Files binaries as well. Use `-KeepData` to keep your per-user data.
+Legacy source-installed services can be removed with `uninstall-service.ps1`;
+new source-based LocalSystem service installs are disabled.
 
 ## Build the app
 
@@ -136,17 +164,9 @@ python -m biounlock_agent clear-credential # remove it and any pending ticket
 python -m biounlock_agent unenroll         # remove local enrollment + device key
 ```
 
-## Run as a Windows service
-
-For unlocking before any user logs in, the pywin32 service wrapper is also
-available:
-
-```powershell
-python -m biounlock_agent.service install
-python -m biounlock_agent.service start
-python -m biounlock_agent.service stop
-python -m biounlock_agent.service remove
-```
+Source-based LocalSystem services are disabled because they could import code
+from a user-writable source directory. Use the packaged installer for pre-login
+unlock; its SYSTEM task runs a protected copy under `%ProgramFiles%`.
 
 ## How verification works
 
@@ -172,15 +192,19 @@ trusted is dropped silently. The agent never executes anything from an envelope.
 
 | Item | Location | Protection |
 | --- | --- | --- |
-| Device private key | `%LOCALAPPDATA%\BioUnlock\device_key.bin` | Windows DPAPI (current user) |
-| Config (server URL, IDs, pinned key) | `%LOCALAPPDATA%\BioUnlock\config.json` | Non-secret |
-| Windows credential (for unlock) | `%LOCALAPPDATA%\BioUnlock\windows_credential.bin` | Windows DPAPI (current user) |
-| Replay database | `%LOCALAPPDATA%\BioUnlock\replay.sqlite3` | Non-secret |
-| Agent log | `%LOCALAPPDATA%\BioUnlock\agent.log` | Non-secret |
+| Device private key | `%ProgramData%\BioUnlock\device_key.bin` | Windows DPAPI (machine) |
+| Config (server URL, IDs, pinned key) | `%ProgramData%\BioUnlock\config.json` | Non-secret |
+| Windows credential (for unlock) | `%ProgramData%\BioUnlock\windows_credential.bin` | Windows DPAPI (machine) |
+| Replay database | `%ProgramData%\BioUnlock\replay.sqlite3` | Non-secret |
+| Agent log | `%ProgramData%\BioUnlock\agent.log` | Non-secret |
 | Pending unlock ticket | `%ProgramData%\BioUnlock\unlock_ticket.bin` | Windows DPAPI (machine) |
 
-Set `BIOUNLOCK_AGENT_HOME` to override the per-user directory. On non-Windows
-platforms a plaintext file store is used as a development fallback.
+A per-user install that has not yet gone through the elevated step keeps the
+same files under `%LOCALAPPDATA%\BioUnlock` with user-scope DPAPI. The installer
+copies that profile across and re-protects the secrets, because the SYSTEM
+startup task cannot decrypt a per-user blob before that user signs in. Set
+`BIOUNLOCK_AGENT_HOME` to override the directory. On non-Windows platforms a
+plaintext file store is used as a development fallback.
 
 ## Tests
 

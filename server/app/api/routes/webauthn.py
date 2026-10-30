@@ -27,6 +27,7 @@ from app.schemas import (
     RegistrationBeginResponse,
     RegistrationCompleteRequest,
 )
+from app.services.challenges import consume_challenge
 from app.services.events import record_event
 from app.services.ids import new_uuid
 from app.services.requests import SINGLE_USER_ID
@@ -92,6 +93,10 @@ def register_complete(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Challenge already used.")
     if as_utc(challenge.expires_at) <= utcnow():
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Challenge expired.")
+    if not consume_challenge(db, challenge.id):
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Challenge already used or expired.")
+    db.commit()
 
     try:
         result = verify_registration(
@@ -124,7 +129,6 @@ def register_complete(
         aaguid=result.aaguid,
         name=payload.name,
     )
-    challenge.used_at = utcnow()
     db.add(credential)
     record_event(
         db,

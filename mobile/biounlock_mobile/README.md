@@ -34,8 +34,29 @@ flutter analyze
 flutter test
 flutter run                    # debug on a connected device
 flutter build apk --debug      # debug APK
-flutter build apk --release    # signed release APK (needs a signing config)
+flutter build apk --release    # requires android/key.properties and a private keystore
 ```
+
+From `mobile/biounlock_mobile/android`, create an upload keystore. `keytool`
+prompts for passwords; do not put them on the command line:
+
+```powershell
+keytool -genkeypair -v -keystore app\upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+Create the ignored `android/key.properties` file:
+
+```properties
+storeFile=app/upload-keystore.jks
+storePassword=<your-keystore-password>
+keyAlias=upload
+keyPassword=<your-key-password>
+```
+
+Never commit either file or share the private key. Use the same signing identity
+for updates; changing it breaks Android app association and may require passkey
+re-registration. Configure Digital Asset Links with the release signing
+certificate fingerprint, not the debug certificate.
 
 Output APKs land in `build/app/outputs/flutter-apk/` (`app-debug.apk` or
 `app-release.apk`). Attach the release APK to a GitHub Release to distribute it.

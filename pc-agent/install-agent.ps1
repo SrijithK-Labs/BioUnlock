@@ -3,10 +3,11 @@
 #   powershell -ExecutionPolicy Bypass -File install-agent.ps1               # packaged .exe
 #   powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource   # run from Python
 #
-# For a packaged .exe this just runs "BioUnlock.exe install", which copies the
-# app to %LOCALAPPDATA%\BioUnlock, adds it to Start-up, creates a Start Menu
-# shortcut, and (after one UAC prompt) registers the bundled Windows Credential
-# Provider. Only that provider step needs elevation.
+# For a packaged .exe this just runs "BioUnlock.exe install --silent", which
+# copies the app to %LOCALAPPDATA%\BioUnlock, adds it to Start-up, creates a
+# Start Menu shortcut, and (after one UAC prompt) registers the bundled Windows
+# Credential Provider. Only that provider step needs elevation. Double-clicking
+# the .exe (or running "install" without --silent) opens the setup wizard.
 #
 # -FromSource installs a launcher that runs the agent with pythonw.exe instead
 # of the packaged .exe. Use it when the machine's Windows Smart App Control
@@ -35,13 +36,12 @@ if (-not $FromSource) {
     if (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath)) {
         throw "Could not find BioUnlock.exe. Build it with build.ps1, pass -ExePath, or use -FromSource."
     }
-    $exeArgs = @("install")
+    $exeArgs = @("install", "--silent")
     if ($NoAutostart) { $exeArgs += "--no-autostart" }
     if ($NoShortcut) { $exeArgs += "--no-shortcut" }
     if ($NoLaunch) { $exeArgs += "--no-launch" }
     if ($SkipCredentialProvider) { $exeArgs += "--no-provider" }
-    # The packaged installer already explains itself on screen; keep scripted
-    # runs quiet (no message box).
+    # Scripted runs never show the setup wizard or a message box.
     $env:BIOUNLOCK_INSTALLER_QUIET = "1"
     try {
         & $ExePath @exeArgs

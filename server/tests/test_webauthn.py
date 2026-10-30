@@ -34,6 +34,19 @@ def test_register_passkey_unknown_challenge(client: TestClient) -> None:
     assert response.status_code == 400
 
 
+def test_registration_challenge_cannot_be_reused(client: TestClient) -> None:
+    begin = client.post("/api/v1/webauthn/register/begin").json()
+    authenticator = SoftAuthenticator("localhost", TEST_ORIGIN)
+    credential = authenticator.make_credential(b64url_decode(begin["options"]["challenge"]))
+    payload = {"challenge_id": begin["challenge_id"], "credential": credential}
+
+    first = client.post("/api/v1/webauthn/register/complete", json=payload)
+    second = client.post("/api/v1/webauthn/register/complete", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+
+
 def test_register_passkey_rejects_foreign_origin(client: TestClient) -> None:
     begin = client.post("/api/v1/webauthn/register/begin").json()
     authenticator = SoftAuthenticator("localhost", "https://evil.example.com")
@@ -59,6 +72,24 @@ def test_end_to_end_authorization_request(client: TestClient) -> None:
     body = response.json()
     assert body["status"] == "pending"
     assert body["operation"] == "remote_unlock"
+
+
+def test_authentication_challenge_cannot_be_reused(client: TestClient) -> None:
+    authenticator = register_passkey(client)
+    device_id, _key, _fp = enroll_and_pair(client)
+    begin = client.post("/api/v1/auth/challenges", json={"pc_id": device_id}).json()
+    assertion = authenticator.get_assertion(b64url_decode(begin["options"]["challenge"]))
+    payload = {
+        "challenge_id": begin["challenge_id"],
+        "pc_id": device_id,
+        "assertion": assertion,
+    }
+
+    first = client.post("/api/v1/auth/requests", json=payload)
+    second = client.post("/api/v1/auth/requests", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
 
 
 def test_end_to_end_lock_request(client: TestClient) -> None:

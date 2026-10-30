@@ -35,13 +35,14 @@ cannot forge envelopes for an already-paired PC.
    `pairing_code` is unpredictable, single-use, TTL `pairing_ttl`, with attempt
    limits.
 3. UI shows the QR (contains base URL, pairing code, server fingerprint).
-4. Phone user (WebAuthn-authenticated) → `POST /api/v1/pairing/confirm`
-   with the pairing code. Server binds `account → device`, marks the device
-   active/paired, and invalidates the pairing code.
+4. The owner proves user verification with the registered passkey, then the
+  phone sends `POST /api/v1/pairing/confirm` with the pairing code. The
+  server marks the device active and invalidates the pairing code.
 5. Agent records `(device_id, server_base_url, pinned_server_signing_pk)`
    and starts operating. Any PC->server request is authenticated with
    `Authorization: Biounlock <device_id>.<expiry>.<sig>` where the signature is
-   over `base_url || "/" || device_id || expiry`, using `sk_pc`.
+  over `biounlock-device-auth-v1|server_fingerprint|device_id|expiry`, using
+  `sk_pc`.
 
 ## Remote authentication request
 
@@ -62,7 +63,7 @@ Response (`ChallengeResponse`):
 }
 ```
 
-The challenge is stored server-side, single attempt session, TTL
+The challenge is stored server-side, single-use, and expires after
 `challenge_ttl`.
 
 ### 2. Assertion (phone → server)
@@ -89,19 +90,19 @@ WebAuthn spec). It then submits:
 
 ### 3. Server verification and envelope
 
-1. The challenge is fetched, must be owned by the account, unexpired, and
-   unused. It is consumed in the same transaction that creates the request.
+1. The challenge is fetched, must match the submitted PC, be unexpired, and be
+   unused. It is atomically consumed before assertion verification.
 2. The WebAuthn assertion is verified with the maintained `webauthn` library
-   against the registered credential and the stored challenge.
-3. `pc_id` ownership is enforced (account owns the device, device is paired and
-   not revoked).
+   against the registered credential and the consumed challenge.
+3. The registered passkey proves the single owner; the target PC must be active
+   and paired.
 4. An `AuthRequest` row is created:
-   `{ id, account_id, pc_id, challenge_id, operation, status: "pending",
-      expires_at, created_at, nonce }`.
+   `{ id, pc_id, challenge_id, operation, status: "pending", expires_at,
+     created_at, nonce }`.
 5. An **authorization envelope** is signed with the server signing key:
 
 ```
-sign_message = "biounlock-envelope-v1" || request_id || account_id || pc_id ||
+sign_message = "biounlock-envelope-v1" || request_id || "biounlock" || pc_id ||
                operation || issued_at || expires_at || nonce
 ```
 
@@ -110,7 +111,7 @@ Envelope JSON delivered to the agent:
 ```json
 {
   "request_id": "uuid",
-  "account": "user@example.com",
+  "account_id": "biounlock",
   "pc_id": "uuid",
   "operation": "remote_unlock",
   "issued_at": 1700000000,
@@ -130,25 +131,28 @@ The agent accepts the envelope **only if all** hold:
 - `pc_id` equals the agent's registered device id;
 - `expires_at > now` (with small clock skew allowance);
 - `request_id`/`nonce` were not already processed (persistent dedupe);
-- the account binding is present and the agent is currently paired.
+- `account_id` equals the protocol's single-owner value `biounlock`, and the
+  agent is currently paired.
 
-Failure → the agent marks the request `rejected` (reason code, no secrets)
-and drops the envelope. It **never** executes anything from the envelope other
-than a registered operation (`remote_unlock` or `remote_lock`), and it never
+Failure → the agent rejects and drops the envelope (reason code, no secrets).
+It **never** executes anything from the envelope other than a registered
+operation (`remote_unlock` or `remote_lock`), and it never
 treats mere delivery from the server as authorization to unlock a session.
 
 ### 5. Acknowledgment
 
 `POST /api/v1/requests/{id}/ack` body: `{ status: "verified"|"rejected",
-reason_code?, observed_at }`, signed with `sk_pc`.
+reason_code?, observed_at }`. The PC authenticates this request with its
+short-lived signed device-authorization header.
 
 A `verified` ack may still carry an informational `reason_code` so the phone can
 report the true state: `already_unlocked` (the PC was not locked when an unlock
 was approved) or `already_locked` (a lock was requested while already locked). A
 failed lock is reported as `rejected` with `lock_failed`.
 
-Server validates the device signature and ownership, then updates the request
-status. Terminal statuses: `rejected`, `verified`, `completed`, `expired`.
+Server validates the active device credential and that the request targets that
+device, then updates the request status. Terminal statuses: `rejected`,
+`verified`, `expired`.
 `expired` is set by a sweeper when `expires_at` passes while still pending.
 
 ### 6. Truthful status to the phone
@@ -167,7 +171,8 @@ the server actually knows. **A successful HTTP submit alone is never shown as
 
 ## Throttling
 
-- Login/registration/pairing: rate limited (per IP and per account).
+- Registration and pairing: rate limited per IP; pairing-code attempts are
+  counted in the database.
 - Challenge creation: bounded.
 - Acknowledgment: idempotent (same final status from same device accepted
   once; conflicting status → latest accepted with an audit event).
@@ -175,8 +180,8 @@ the server actually knows. **A successful HTTP submit alone is never shown as
 ## Device revocation
 
 `DELETE /api/v1/devices/{id}` (phone) or `POST /api/v1/devices/{id}/revoke`.
-Server marks the device revoked, closes its active delivery sockets,
-invalidates its tokens, and records a `security_event`. Revoked devices cannot
+Server marks the device revoked, closes its active delivery sockets, and records
+a `security_event`. Revoked devices cannot
 ack or receive envelopes; pending requests targeting them fail closed.
 
 ## Freshness and failure behaviour

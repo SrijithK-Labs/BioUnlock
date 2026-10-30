@@ -25,19 +25,22 @@ def require_api_token(request: Request) -> None:
 
     The mobile app sends it on every owner call, and the PC agent presents it
     once when enrolling before it has a signed device credential of its own.
-    When no token is configured we keep the API open for tests and local
-    development, but refuse to serve in production so a misconfigured deploy
-    fails closed rather than exposing the API.
+    When no token is configured the API is open only when an in-process test
+    harness explicitly enables the test-only bypass. Deployment environment
+    variables alone can never enable it.
     """
     settings = request.app.state.settings
     expected = settings.api_token
     if not expected:
-        if settings.environment.lower() == "production":
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Server is not configured: BIO_API_TOKEN is required.",
-            )
-        return
+        if (
+            settings.environment.lower() == "test"
+            and request.app.state.allow_unauthenticated_api_for_tests
+        ):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server is not configured: BIO_API_TOKEN is required.",
+        )
 
     header = request.headers.get("authorization", "")
     scheme, _, token = header.partition(" ")
