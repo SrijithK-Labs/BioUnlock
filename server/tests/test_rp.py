@@ -19,7 +19,7 @@ from app.core.security import ServerSigningKey
 from app.factory import create_app
 
 DEBUG_FINGERPRINT = static_assets.ANDROID_SHA256_FINGERPRINTS[0]
-DEBUG_ANDROID_ORIGIN = "android:apk-key-hash:5DVyir7YN4Fg8vd14Av1I_5Ao1FkP4pMZXdn0638qAI"
+DEBUG_ANDROID_ORIGIN = "android:apk-key-hash:MOsUvgA0quy6SdTkPXNvvjvAAKFJWoWTdsTm5ibaQIw"
 
 
 def _request(host: str) -> SimpleNamespace:
@@ -29,8 +29,8 @@ def _request(host: str) -> SimpleNamespace:
 def test_bundled_asset_links_yields_debug_android_origin():
     settings = Settings(_env_file=None)
     assert DEBUG_FINGERPRINT == (
-        "E4:35:72:8A:BE:D8:37:81:60:F2:F7:75:E0:0B:F5:23:"
-        "FE:40:A3:51:64:3F:8A:4C:65:77:67:D3:AD:FC:A8:02"
+        "30:EB:14:BE:00:34:AA:EC:BA:49:D4:E4:3D:73:6F:BE:"
+        "3B:C0:00:A1:49:5A:85:93:76:C4:E6:E6:26:DA:40:8C"
     )
     assert android_origins(settings) == [DEBUG_ANDROID_ORIGIN]
 

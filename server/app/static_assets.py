@@ -11,8 +11,8 @@ ANDROID_PACKAGE_NAME = "com.biounlock.biounlock_mobile"
 
 # SHA-256 certificate fingerprints of the Android app signing certificate(s).
 ANDROID_SHA256_FINGERPRINTS = [
-    "E4:35:72:8A:BE:D8:37:81:60:F2:F7:75:E0:0B:F5:23:"
-    "FE:40:A3:51:64:3F:8A:4C:65:77:67:D3:AD:FC:A8:02",
+    "30:EB:14:BE:00:34:AA:EC:BA:49:D4:E4:3D:73:6F:BE:"
+    "3B:C0:00:A1:49:5A:85:93:76:C4:E6:E6:26:DA:40:8C",
 ]
 
 
