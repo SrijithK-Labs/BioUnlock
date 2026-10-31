@@ -13,7 +13,10 @@ tagged releases yet.
 
 Please report security issues privately — never in a public issue.
 
-1. Send an email to the maintainers (see the git history / repository owners).
+1. Use GitHub's private vulnerability reporting on this repository
+   (**Security** → **Report a vulnerability**). If that is unavailable, open a
+   minimal public issue asking for a private contact channel — without exploit
+   details.
 2. Include:
    - A description of the issue and its impact.
    - Affected component(s) and version/commit.

@@ -39,17 +39,18 @@ git ls-files | Select-String -Pattern '\.env$|\.pem$|\.key$|signing'
 
 ## Environment variables
 
-Connect Postgres and configure both required secrets:
+Connect Postgres and configure the required secrets:
 
 | Variable | Required? | Notes |
 | --- | --- | --- |
 | *(Postgres integration)* | **yes** | In the **Storage** tab, connect a Postgres database; the connection string is auto-detected (see caveat 1) |
 | `BIO_DATABASE_URL` | optional | Override the auto-detected database URL |
 | `BIO_SIGNING_KEY` | **yes** | Stable Ed25519 private key from a deployment secret store; generate once and retain it across deploys |
-| `BIO_RP_ID` | optional | Defaults to `auto`: derived from the request host |
+| `BIO_RP_ID` | **yes** | Your WebAuthn domain, e.g. `biounlock.example.com` (no scheme or port). Outside development the server refuses to start if this is left at `auto`. |
 | `BIO_ALLOWED_ORIGINS` | optional | Extra origins; the current host and the Android app origin are added automatically |
 | `BIO_ENVIRONMENT` | optional | Defaults to production; on Vercel it follows `VERCEL_ENV` unless explicitly set |
-| `BIO_API_TOKEN` | **yes** | Shared bearer secret for owner endpoints and enrollment; without it those endpoints fail closed |
+| `BIO_API_TOKEN` | **yes** | Shared bearer secret for owner endpoints and PC enrollment; without it those endpoints fail closed |
+| `BIO_ENROLLMENT_TOKEN` | **yes** once a passkey exists | Second secret required to add or remove passkeys; the first passkey bootstraps with `BIO_API_TOKEN` alone |
 | `BIO_CORS_ORIGINS` | optional | Browser tooling only |
 
 ## Caveats
@@ -78,7 +79,14 @@ Connect Postgres and configure both required secrets:
    Never regenerate it during deploys: paired PCs pin its public identity and
    would require re-pairing if it changes.
 
-3. **WebSockets.** The agent's primary channel is a WebSocket with an automatic
+3. **Pin the WebAuthn domain.** Set `BIO_RP_ID` to the production host (for
+   example `biounlock.example.com`), not the `*.vercel.app` URL if you use a
+   custom domain. Passkeys are scoped to that exact domain, and changing it
+   later invalidates every registered passkey. Preview deployments need their
+   own value or an explicit `BIO_ENVIRONMENT=development`; production will not
+   start with `auto`.
+
+4. **WebSockets.** The agent's primary channel is a WebSocket with an automatic
    REST `inbox` fallback, so delivery keeps working even if the platform does
    not keep the socket open.
 

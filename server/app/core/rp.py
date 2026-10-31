@@ -1,10 +1,10 @@
 """Runtime resolution of the WebAuthn relying-party ID and allowed origins.
 
-So the server works on any host (a Vercel domain, a tunnel, localhost) without
-per-deploy configuration, the RP ID is derived from the request's host header
-whenever ``BIO_RP_ID`` is left at its default (``auto``). Allowed origins are
-the configured ones plus the current host and the Android app origin(s) taken
-from the Digital Asset Links data.
+Development may leave ``BIO_RP_ID`` at ``auto`` so the RP ID follows the request
+host (localhost, a tunnel, a Vercel preview). Deployed environments must pin it
+to their real WebAuthn domain. Allowed origins are the configured ones plus the
+current host and the Android app origin(s) taken from the Digital Asset Links
+data; the cleartext development origin is only added while developing.
 """
 
 from __future__ import annotations
@@ -85,7 +85,8 @@ def allowed_origins_for(settings: Settings, rp_id: str) -> list[str]:
     origins = set(settings.allowed_origins)
     if rp_id:
         origins.add(f"https://{rp_id}")
-        origins.add(f"http://{rp_id}:8000")
+        if settings.is_development:
+            origins.add(f"http://{rp_id}:8000")
     origins.update(android_origins(settings))
     return sorted(origin for origin in origins if origin)
 

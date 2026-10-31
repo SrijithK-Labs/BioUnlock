@@ -27,9 +27,13 @@ API token and a stable server signing key as deployment secrets.
    | Name | Value |
    | --- | --- |
    | `BIO_API_TOKEN` | a long random string (see below) |
+   | `BIO_ENROLLMENT_TOKEN` | a second long random string, entered in the phone after the first passkey |
    | `BIO_SIGNING_KEY` | stable Ed25519 private key PEM (generate once and retain) |
+   | `BIO_RP_ID` | the domain Vercel serves, e.g. `biounlock.example.com` (no scheme or port) |
 
    `BIO_ENVIRONMENT` follows `VERCEL_ENV` on Vercel and defaults to production.
+   Outside development, `BIO_RP_ID` must be pinned; leaving it at `auto` stops
+   startup.
 5. **Deploy.**
 6. **Run the migrations once** against the new database (see
    [Migrations](#migrations)). SQLite would not persist on Vercel, so this step
@@ -43,7 +47,10 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 Enter the same token in the phone app (**Settings → API token**) and the Windows
 agent (**Link this PC**). Without it, the server refuses every owner endpoint
-in production — so a misconfigured deploy fails closed.
+in production — so a misconfigured deploy fails closed. Generate the second
+secret the same way and enter it in the phone as **Settings → Enrollment
+token**: the first passkey can be registered with the API token alone, but every
+later add/remove also requires this value.
 Generate the signing key once from `server/` with:
 
 ```bash
@@ -59,6 +66,8 @@ cd server
 pip install -r requirements.txt
 export BIO_ENVIRONMENT=production         # explicit fail-closed deployment mode
 export BIO_API_TOKEN=<your-secret>          # shared owner API token
+export BIO_ENROLLMENT_TOKEN=<second-secret> # required to change passkeys
+export BIO_RP_ID=biounlock.example.com       # pinned WebAuthn domain
 export BIO_SIGNING_KEY=<stable-ed25519-pem>  # keep stable and private
 export BIO_DATABASE_URL=sqlite:///./biounlock.db   # optional; SQLite by default
 alembic upgrade head                         # create the schema
@@ -70,17 +79,18 @@ HTTPS (the WebAuthn relying party must be an HTTPS origin).
 
 ## Environment variables
 
-`BIO_ENVIRONMENT` defaults to `production`; deployed environments require both
-`BIO_API_TOKEN` and `BIO_SIGNING_KEY`. Only an explicitly configured automated
-test harness may omit them. See [`../.env.example`](../.env.example) for the
-local development settings.
+`BIO_ENVIRONMENT` defaults to `production`; deployed environments require
+`BIO_API_TOKEN`, `BIO_SIGNING_KEY`, and a pinned `BIO_RP_ID`. Only an explicitly
+configured automated test harness may omit them. See
+[`../.env.example`](../.env.example) for the local development settings.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `BIO_API_TOKEN` | **yes** | Shared bearer secret for owner endpoints and enrollment |
+| `BIO_API_TOKEN` | **yes** | Shared bearer secret for owner endpoints and PC enrollment |
+| `BIO_ENROLLMENT_TOKEN` | after the first passkey | Second secret required to add or remove passkeys |
 | `BIO_SIGNING_KEY` | **yes** (deployed) | Stable Ed25519 private key from a secret store |
 | `BIO_DATABASE_URL` | no | Overrides the auto-detected database URL |
-| `BIO_RP_ID` | no | Defaults to `auto` (taken from the request host) |
+| `BIO_RP_ID` | **yes** (deployed) | WebAuthn domain; `auto` (request host) is development-only |
 | `BIO_ALLOWED_ORIGINS` | no | Extra origins; the request host and the Android app origin are added automatically |
 | `BIO_ENVIRONMENT` | no | Auto-set from Vercel's `VERCEL_ENV`; keeps `/docs` off in production |
 
@@ -126,9 +136,11 @@ ruff check .
 
 ## Security
 
-Owner endpoints (passkey registration, device/passkey management, pairing
-confirmation, activity history) and PC enrollment require `BIO_API_TOKEN`. The PC
-agent authenticates with its own Ed25519 device credential after enrollment, and
-only a paired, active device may open the agent WebSocket. See
+Owner endpoints (device/passkey management, pairing confirmation, activity
+history) and PC enrollment require `BIO_API_TOKEN`. Once a passkey exists,
+adding or removing passkeys also requires `BIO_ENROLLMENT_TOKEN`, so a leaked
+API token cannot enroll an attacker's authenticator. The PC agent authenticates
+with its own Ed25519 device credential after enrollment, and only a paired,
+active device may open the agent WebSocket. See
 [`../docs/security.md`](../docs/security.md) and
 [`../docs/threat-model.md`](../docs/threat-model.md).

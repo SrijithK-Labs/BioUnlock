@@ -1,4 +1,5 @@
 import 'package:biounlock_mobile/services/api_token_store.dart';
+import 'package:biounlock_mobile/services/enrollment_token_store.dart';
 import 'package:biounlock_mobile/services/preferences_store.dart';
 import 'package:biounlock_mobile/services/server_url_store.dart';
 import 'package:biounlock_mobile/state/app_state.dart';
@@ -67,6 +68,73 @@ void main() {
 
     expect(state.apiToken, 'stored-token');
     expect(headers, ['Bearer stored-token']);
+  });
+
+  test('configureServer sends a stored enrollment token on passkey changes', () async {
+    final headers = <String?>[];
+    final state = AppState(
+      store: InMemoryServerUrlStore(),
+      tokenStore: InMemoryApiTokenStore(token: 'api-token'),
+      enrollmentTokenStore: InMemoryEnrollmentTokenStore(token: 'enroll-token'),
+      passkeyService: FakePasskeyService(),
+      httpClient: routedClient({
+        'GET /api/v1/server/info': (_) => ok(serverInfoJson()),
+        'POST /api/v1/webauthn/register/begin': (request) {
+          headers.add(request.headers['X-BioUnlock-Enrollment']);
+          return ok({'challenge_id': 'chal-1', 'options': {}});
+        },
+      }),
+    );
+
+    await state.init();
+    await state.configureServer('example.com');
+    await state.api!.passkeyRegisterBegin();
+
+    expect(state.enrollmentToken, 'enroll-token');
+    expect(headers, ['enroll-token']);
+  });
+
+  test('setEnrollmentToken persists the value and rebuilds the client', () async {
+    final store = InMemoryEnrollmentTokenStore();
+    final headers = <String?>[];
+    final state = AppState(
+      store: InMemoryServerUrlStore(),
+      enrollmentTokenStore: store,
+      passkeyService: FakePasskeyService(),
+      httpClient: routedClient({
+        'GET /api/v1/server/info': (_) => ok(serverInfoJson()),
+        'POST /api/v1/webauthn/register/begin': (request) {
+          headers.add(request.headers['X-BioUnlock-Enrollment']);
+          return ok({'challenge_id': 'chal-1', 'options': {}});
+        },
+      }),
+    );
+
+    await state.configureServer('example.com');
+    await state.setEnrollmentToken('  new-token  ');
+    await state.api!.passkeyRegisterBegin();
+
+    expect(state.enrollmentToken, 'new-token');
+    expect(await store.readToken(), 'new-token');
+    expect(headers, ['new-token']);
+  });
+
+  test('resetServer clears the stored enrollment token', () async {
+    final store = InMemoryEnrollmentTokenStore(token: 'enroll-token');
+    final state = AppState(
+      store: InMemoryServerUrlStore(serverUrl: 'https://example.com'),
+      enrollmentTokenStore: store,
+      passkeyService: FakePasskeyService(),
+      httpClient: routedClient({
+        'GET /api/v1/server/info': (_) => ok(serverInfoJson()),
+      }),
+    );
+    await state.init();
+
+    await state.resetServer();
+
+    expect(state.enrollmentToken, isNull);
+    expect(await store.readToken(), '');
   });
 
   test('init does not send stored token to an unsafe saved URL', () async {

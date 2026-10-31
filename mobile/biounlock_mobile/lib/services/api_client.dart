@@ -12,13 +12,19 @@ import 'api_exception.dart';
 /// The base URL and the shared API token are supplied by the user at setup time
 /// (each deployment is self-hosted) and never hardcoded. Owner endpoints expect
 /// the token as ``Authorization: Bearer <token>``; the PC agent authenticates
-/// separately, so a missing token simply omits the header.
+/// separately, so a missing token simply omits the header. Passkey changes also
+/// send the optional enrollment token as ``X-BioUnlock-Enrollment``.
 class ApiClient {
-  ApiClient({required this.baseUrl, this.apiToken, http.Client? httpClient})
-    : _http = httpClient ?? http.Client();
+  ApiClient({
+    required this.baseUrl,
+    this.apiToken,
+    this.enrollmentToken,
+    http.Client? httpClient,
+  }) : _http = httpClient ?? http.Client();
 
   final String baseUrl;
   final String? apiToken;
+  final String? enrollmentToken;
   final http.Client _http;
 
   Uri _uri(String path) {
@@ -28,13 +34,21 @@ class ApiClient {
     return Uri.parse('$normalized/api/v1$path');
   }
 
-  Map<String, String> _headers({Map<String, String>? extra}) {
+  Map<String, String> _headers({
+    Map<String, String>? extra,
+    bool enrollment = false,
+  }) {
     final headers = <String, String>{
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     };
     if (apiToken != null && apiToken!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $apiToken';
+    }
+    if (enrollment &&
+        enrollmentToken != null &&
+        enrollmentToken!.isNotEmpty) {
+      headers['X-BioUnlock-Enrollment'] = enrollmentToken!;
     }
     if (extra != null) {
       headers.addAll(extra);
@@ -47,9 +61,10 @@ class ApiClient {
     String path, {
     Object? body,
     Map<String, String>? headers,
+    bool enrollment = false,
   }) async {
     final request = http.Request(method, _uri(path))
-      ..headers.addAll(_headers(extra: headers))
+      ..headers.addAll(_headers(extra: headers, enrollment: enrollment))
       ..followRedirects = false;
     if (body != null) {
       request.body = jsonEncode(body);
@@ -86,18 +101,27 @@ class ApiClient {
   // --- WebAuthn / passkeys ---
 
   Future<Map<String, dynamic>> passkeyRegisterBegin() async =>
-      await _send('POST', '/webauthn/register/begin') as Map<String, dynamic>;
+      await _send(
+        'POST',
+        '/webauthn/register/begin',
+        enrollment: true,
+      ) as Map<String, dynamic>;
 
   Future<PasskeyCredential> passkeyRegisterComplete({
     required String challengeId,
     required Map<String, dynamic> credential,
     String? name,
   }) async => PasskeyCredential.fromJson(
-    await _send('POST', '/webauthn/register/complete', body: {
-      'challenge_id': challengeId,
-      'credential': credential,
-      'name': name,
-    }) as Map<String, dynamic>,
+    await _send(
+      'POST',
+      '/webauthn/register/complete',
+      body: {
+        'challenge_id': challengeId,
+        'credential': credential,
+        'name': name,
+      },
+      enrollment: true,
+    ) as Map<String, dynamic>,
   );
 
   Future<List<PasskeyCredential>> listPasskeys() async {
@@ -108,7 +132,7 @@ class ApiClient {
   }
 
   Future<void> deletePasskey(String id) =>
-      _send('DELETE', '/webauthn/credentials/$id');
+      _send('DELETE', '/webauthn/credentials/$id', enrollment: true);
 
   // --- Devices / pairing ---
 

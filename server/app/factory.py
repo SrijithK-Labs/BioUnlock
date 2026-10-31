@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api.router import api_router
 from app.api.routes import health, well_known
-from app.config import Settings, get_settings
+from app.config import AUTO_RP_ID, Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.rate_limit import RateLimiter
 from app.core.request_limits import RequestBodyLimitMiddleware
@@ -44,6 +44,16 @@ def create_app(
     require_external_signing_key = not settings.is_development and not test_harness
     if require_external_signing_key and not os.environ.get(SIGNING_KEY_ENV):
         raise SigningKeyError(f"{SIGNING_KEY_ENV} is required outside development and tests.")
+
+    # Deriving the relying-party ID from the request Host header is convenient
+    # on localhost but lets a forged Host select the WebAuthn scope. Deployed
+    # environments must pin the domain they are actually served from.
+    if (
+        not settings.is_development
+        and settings.environment.lower() != "test"
+        and settings.rp_id.strip().lower() in {"", AUTO_RP_ID}
+    ):
+        raise ValueError("BIO_RP_ID must be pinned to your WebAuthn domain outside development.")
 
     engine = create_engine_for_url(settings.database_url)
     session_factory = make_session_factory(engine)

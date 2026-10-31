@@ -73,8 +73,8 @@ a real server it must:
    `https://<your-domain>/.well-known/assetlinks.json` containing the app package
    (`com.biounlock.biounlock_mobile`) and the SHA-256 of the APK's signing
    certificate.
-3. Have `BIO_RP_ID` match that domain (the default `auto` derives it from the
-   request host, so no configuration is usually needed).
+3. Have `BIO_RP_ID` pinned to that domain. (Development may use `auto`, which
+   follows the request host; deployed servers refuse it.)
 
 Because of this, passkey login cannot be tested against a bare `localhost` RP on
 a physical device. See [`../../docs/mobile.md`](../../docs/mobile.md) for the
@@ -94,8 +94,11 @@ android/                             Manifest (INTERNET, CAMERA), Gradle config
 test/                                Unit + widget tests with fakes/mocks
 ```
 
-Requires Flutter 3.47+ (Dart 3.13+). Configuration (server URL and API token) is
-stored with `flutter_secure_storage`.
+Requires Flutter 3.47+ (Dart 3.13+). Configuration (server URL, API token, and
+the optional enrollment token) is stored with `flutter_secure_storage`. The first
+passkey is added with the API token alone; after that, `BIO_ENROLLMENT_TOKEN`
+must also be entered under **Settings → Enrollment token** to add or remove
+passkeys.
 
 ## Tests
 

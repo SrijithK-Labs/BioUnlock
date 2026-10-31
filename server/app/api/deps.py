@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import (
@@ -13,7 +14,7 @@ from app.core.security import (
     verify_message_signature,
 )
 from app.database import get_db
-from app.models import Device, DeviceStatus
+from app.models import Device, DeviceStatus, WebAuthnCredential
 
 
 def client_ip(request: Request) -> str:
@@ -49,6 +50,43 @@ def require_api_token(request: Request) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="A valid API token is required.",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def require_enrollment_token(request: Request, db: Session = Depends(get_db)) -> None:
+    """Guard passkey changes once the owner has at least one passkey.
+
+    The first passkey is enrolled with the API token alone so a fresh
+    deployment can be claimed. After that, adding or deleting credentials also
+    requires ``BIO_ENROLLMENT_TOKEN`` as ``X-BioUnlock-Enrollment``. This stops
+    a stolen API token from enrolling an attacker's passkey and unlocking every
+    paired PC. Deployed environments fail closed if the token is not
+    configured; only the explicit test harness bypasses it.
+    """
+    credential_count = db.execute(
+        select(func.count()).select_from(WebAuthnCredential)
+    ).scalar_one()
+    if credential_count == 0:
+        return
+
+    settings = request.app.state.settings
+    expected = settings.enrollment_token
+    if not expected:
+        if (
+            settings.environment.lower() == "test"
+            and request.app.state.allow_unauthenticated_api_for_tests
+        ):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server is not configured: BIO_ENROLLMENT_TOKEN is required.",
+        )
+
+    provided = request.headers.get("x-biounlock-enrollment", "")
+    if not constant_time_equals(provided.strip(), expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A valid enrollment token is required to change passkeys.",
         )
 
 

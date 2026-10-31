@@ -97,6 +97,13 @@ class Settings(BaseSettings):
     # may bypass owner-token enforcement.
     api_token: str | None = None
 
+    # Second secret that gates passkey changes once at least one passkey exists.
+    # A fresh deployment bootstraps its first passkey with ``api_token`` alone;
+    # after that, adding or removing passkeys also requires this token, sent as
+    # ``X-BioUnlock-Enrollment``. Without it a stolen API token could enroll an
+    # attacker's passkey and unlock every paired PC.
+    enrollment_token: str | None = None
+
     database_url: str = DEFAULT_DATABASE_URL
     data_dir: str = "./data"
 

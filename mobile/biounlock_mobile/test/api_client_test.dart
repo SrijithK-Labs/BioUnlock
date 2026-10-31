@@ -144,6 +144,31 @@ void main() {
     expect(device.isActive, isTrue);
   });
 
+  test('sends the enrollment token only on passkey changes', () async {
+    final seen = <String, String?>{};
+    final client = ApiClient(
+      baseUrl: 'https://example.com',
+      apiToken: 'api-token',
+      enrollmentToken: 'enroll-token',
+      httpClient: routedClient({
+        'POST /api/v1/webauthn/register/begin': (request) {
+          seen['begin'] = request.headers['X-BioUnlock-Enrollment'];
+          return ok({'challenge_id': 'chal-1', 'options': {}});
+        },
+        'GET /api/v1/devices': (request) {
+          seen['devices'] = request.headers['X-BioUnlock-Enrollment'];
+          return ok([]);
+        },
+      }),
+    );
+
+    await client.passkeyRegisterBegin();
+    await client.listDevices();
+
+    expect(seen['begin'], 'enroll-token');
+    expect(seen['devices'], isNull);
+  });
+
   test('passkey registration complete parses the credential', () async {
     final client = ApiClient(
       baseUrl: 'https://example.com',

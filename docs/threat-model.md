@@ -61,8 +61,8 @@ An attacker pretends to be a paired PC.
 
 ## Threat: Credential theft
 
-The owner API token, a device key, the server signing key, or a pairing code is
-stolen.
+The owner API token, the enrollment token, a device key, the server signing key,
+or a pairing code is stolen.
 
 - **Mitigation:** device keys use DPAPI; pairing codes are high-entropy,
   single-use, short-lived, and stored as hashes. Production signing keys come
@@ -76,7 +76,9 @@ A stolen owner bearer token is replayed.
 
 - **Mitigation:** HTTPS-only and secret-store protection. Rotate the shared
   token to revoke it. The token has no built-in expiry or per-session
-  revocation; mobile storage uses platform secure storage.
+  revocation; mobile storage uses platform secure storage. Once a passkey
+  exists, registering another one also needs `BIO_ENROLLMENT_TOKEN`, so a
+  stolen API token alone cannot add an attacker-controlled authenticator.
 
 ## Threat: Brute-force attacks
 

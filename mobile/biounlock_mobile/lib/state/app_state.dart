@@ -8,6 +8,7 @@ import '../models/misc.dart';
 import '../services/api_client.dart';
 import '../services/api_exception.dart';
 import '../services/api_token_store.dart';
+import '../services/enrollment_token_store.dart';
 import '../services/passkey_service.dart';
 import '../services/preferences_store.dart';
 import '../services/server_url_store.dart';
@@ -19,22 +20,27 @@ class AppState extends ChangeNotifier {
     required this.store,
     required PasskeyService passkeyService,
     ApiTokenStore? tokenStore,
+    EnrollmentTokenStore? enrollmentTokenStore,
     PreferencesStore? preferences,
     http.Client? httpClient,
   }) : _passkeyService = passkeyService,
        _tokenStore = tokenStore ?? InMemoryApiTokenStore(),
+       _enrollmentTokenStore =
+           enrollmentTokenStore ?? InMemoryEnrollmentTokenStore(),
        _preferences = preferences ?? InMemoryPreferencesStore(),
        _httpClient = httpClient;
 
   final ServerUrlStore store;
   final PasskeyService _passkeyService;
   final ApiTokenStore _tokenStore;
+  final EnrollmentTokenStore _enrollmentTokenStore;
   final PreferencesStore _preferences;
   final http.Client? _httpClient;
 
   ApiClient? _api;
   ServerInfo? _serverInfo;
   String? _apiToken;
+  String? _enrollmentToken;
   bool _busy = false;
   String? _error;
   bool _initialized = false;
@@ -45,6 +51,7 @@ class AppState extends ChangeNotifier {
   ServerInfo? get serverInfo => _serverInfo;
   String? get serverUrl => _api?.baseUrl;
   String? get apiToken => _apiToken;
+  String? get enrollmentToken => _enrollmentToken;
   bool get isConfigured => _api != null;
   bool get busy => _busy;
   String? get error => _error;
@@ -67,6 +74,7 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     _themeMode = _themeModeFromName(await _preferences.readThemeMode());
     _apiToken = _cleanToken(await _tokenStore.readToken());
+    _enrollmentToken = _cleanToken(await _enrollmentTokenStore.readToken());
     final url = await store.readServerUrl();
     if (url != null && url.isNotEmpty) {
       final normalized = _normalizeUrl(url);
@@ -74,6 +82,7 @@ class AppState extends ChangeNotifier {
         _api = ApiClient(
           baseUrl: normalized,
           apiToken: _apiToken,
+          enrollmentToken: _enrollmentToken,
           httpClient: _httpClient,
         );
         try {
@@ -111,6 +120,7 @@ class AppState extends ChangeNotifier {
       final client = ApiClient(
         baseUrl: normalized,
         apiToken: effectiveToken,
+        enrollmentToken: _enrollmentToken,
         httpClient: _httpClient,
       );
       final info = await client.serverInfo();
@@ -128,14 +138,33 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Forgets the configured server URL and API token, returning to first-run
+  /// Updates and persists the enrollment token used to add or remove passkeys
+  /// after the first one. An empty value clears it.
+  Future<void> setEnrollmentToken(String? value) async {
+    final cleaned = _cleanToken(value);
+    _enrollmentToken = cleaned;
+    await _enrollmentTokenStore.writeToken(cleaned ?? '');
+    if (_api != null) {
+      _api = ApiClient(
+        baseUrl: _api!.baseUrl,
+        apiToken: _apiToken,
+        enrollmentToken: cleaned,
+        httpClient: _httpClient,
+      );
+    }
+    notifyListeners();
+  }
+
+  /// Forgets the configured server URL and API tokens, returning to first-run
   /// setup.
   Future<void> resetServer() async {
     await store.writeServerUrl('');
     await _tokenStore.writeToken('');
+    await _enrollmentTokenStore.writeToken('');
     _api = null;
     _serverInfo = null;
     _apiToken = null;
+    _enrollmentToken = null;
     notifyListeners();
   }
 

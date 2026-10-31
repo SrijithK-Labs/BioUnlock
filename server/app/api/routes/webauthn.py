@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 
-from app.api.deps import client_ip, require_api_token
+from app.api.deps import client_ip, require_api_token, require_enrollment_token
 from app.core.rate_limit import rate_limit
 from app.core.rp import allowed_origins_for, resolve_rp_id
 from app.core.time import as_utc
@@ -41,6 +41,7 @@ router = APIRouter(tags=["webauthn"])
     dependencies=[
         Depends(rate_limit("wa_register_begin", limit=30, window=60)),
         Depends(require_api_token),
+        Depends(require_enrollment_token),
     ],
 )
 def register_begin(
@@ -78,7 +79,7 @@ def register_begin(
 @router.post(
     "/webauthn/register/complete",
     response_model=CredentialOut,
-    dependencies=[Depends(require_api_token)],
+    dependencies=[Depends(require_api_token), Depends(require_enrollment_token)],
 )
 def register_complete(
     payload: RegistrationCompleteRequest,
@@ -158,7 +159,7 @@ def list_credentials(
 @router.delete(
     "/webauthn/credentials/{credential_id}",
     response_model=MessageResponse,
-    dependencies=[Depends(require_api_token)],
+    dependencies=[Depends(require_api_token), Depends(require_enrollment_token)],
 )
 def delete_credential(
     credential_id: str,

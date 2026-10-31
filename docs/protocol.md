@@ -25,6 +25,21 @@ pairing (via the enrollment handshake + QR). After that, any envelope that does
 not verify against this pinned key is dropped. A changed server therefore
 cannot forge envelopes for an already-paired PC.
 
+## Passkey enrollment
+
+`POST /api/v1/webauthn/register/begin` and `.../register/complete`, together with
+`DELETE /api/v1/webauthn/credentials/{id}`, require
+`Authorization: Bearer <BIO_API_TOKEN>`. Reading the credential list needs only
+that token.
+
+The first passkey may be registered with the API token alone. Once at least one
+credential exists, the same calls also require
+`X-BioUnlock-Enrollment: <BIO_ENROLLMENT_TOKEN>`. The second secret keeps a
+leaked API token from enrolling an attacker's authenticator and unlocking every
+paired PC. A deployment that already has a passkey refuses these calls when
+`BIO_ENROLLMENT_TOKEN` is unset. The app sends the header only on passkey
+changes, never on ordinary owner calls.
+
 ## Pairing / enrollment
 
 1. Agent generates `(sk_pc, pk_pc)` locally. `sk_pc` is stored DPAPI-protected.

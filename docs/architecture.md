@@ -93,3 +93,4 @@ with.
 | Server signing key | Deployment secret store (`BIO_SIGNING_KEY`) | encrypted platform secret storage; required in deployed environments |
 | PC device private key | Windows machine | DPAPI-protected file |
 | Owner API token | Server environment + phone secure storage | shared long-lived secret; rotate if exposed |
+| Enrollment token | Server environment + phone secure storage | second shared secret; required to change passkeys once one exists |

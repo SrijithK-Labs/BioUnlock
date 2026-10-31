@@ -76,6 +76,18 @@ class SettingsTab extends StatelessWidget {
                   trailing: const Icon(Icons.edit_outlined),
                   onTap: () => _editApiKey(context),
                 ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.verified_user_outlined),
+                  title: const Text('Enrollment token'),
+                  subtitle: Text(
+                    (state.enrollmentToken ?? '').isEmpty
+                        ? 'Not set'
+                        : '••••••••',
+                  ),
+                  trailing: const Icon(Icons.edit_outlined),
+                  onTap: () => _editEnrollmentToken(context),
+                ),
               ],
             ),
           ),
@@ -236,6 +248,52 @@ class SettingsTab extends StatelessWidget {
     await _saveServer(
       context,
       () => state.configureServer(state.serverUrl!, token: token),
+    );
+  }
+
+  Future<void> _editEnrollmentToken(BuildContext context) async {
+    final state = context.read<AppState>();
+    final controller = TextEditingController(
+      text: state.enrollmentToken ?? '',
+    );
+    final token = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enrollment token'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          autocorrect: false,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Enrollment token',
+            helperText: 'Set as BIO_ENROLLMENT_TOKEN on your server',
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (token == null || !context.mounted) return;
+    await state.setEnrollmentToken(token);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          token.trim().isEmpty
+              ? 'Enrollment token cleared.'
+              : 'Enrollment token saved.',
+        ),
+      ),
     );
   }
 

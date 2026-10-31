@@ -26,20 +26,39 @@ Initial-release security notes. See also `threat-model.md` and `protocol.md`.
 
 ## Owner API token
 
-Every owner endpoint — passkey registration and management, device
-listing/revocation, pairing confirmation, security events, and authorization
-requests — requires the shared secret `BIO_API_TOKEN`, sent as
-`Authorization: Bearer <token>`. PC enrollment is gated the same way, so only
-Someone who knows the deployment secret can add a device. The mobile app stores
-the token in platform-secure storage and sends it on every owner call; the PC
-agent uses it only for the one-time `enroll` request and afterwards
-authenticates with its own signed device credential. Deployed environments
-fail closed without `BIO_API_TOKEN`; only an explicitly enabled test harness
-bypasses token checks. Generate one with
+Every owner endpoint — device listing/revocation, pairing confirmation, security
+events, and authorization requests — requires the shared secret `BIO_API_TOKEN`,
+sent as `Authorization: Bearer <token>`. PC enrollment is gated the same way, so
+only someone who knows the deployment secret can add a device. The mobile app
+stores the token in platform-secure storage and sends it on every owner call; the
+PC agent uses it only for the one-time `enroll` request and afterwards
+authenticates with its own signed device credential. Deployed environments fail
+closed without `BIO_API_TOKEN`; only an explicitly enabled test harness bypasses
+token checks. Generate one with
 `python -c "import secrets; print(secrets.token_urlsafe(32))"` and set the same
 value in the app's setup screen and in the PC agent (the Link dialog, or
 `--token` / `BIOUNLOCK_AGENT_TOKEN`). The owner token is a long-lived shared
 secret with no built-in expiry; rotate it immediately if exposed.
+
+## Passkey enrollment token
+
+An enrolled passkey can authorize every paired PC, so passkey changes are gated
+by a second secret once one exists. The first passkey is registered with
+`BIO_API_TOKEN` alone so a fresh deployment can be claimed. After that,
+`POST /webauthn/register/begin`, `POST /webauthn/register/complete`, and
+`DELETE /webauthn/credentials/{id}` also require `BIO_ENROLLMENT_TOKEN`, sent as
+`X-BioUnlock-Enrollment`. A stolen API token alone therefore cannot enroll an
+attacker's passkey. A deployed server that already has a passkey fails closed
+when `BIO_ENROLLMENT_TOKEN` is unset. Rotate the enrollment token if it is
+exposed: existing passkeys keep working, but the new value must be entered in
+the phone before passkeys can be changed again.
+
+## WebAuthn relying party
+
+Deployed environments must pin `BIO_RP_ID` to the exact domain that serves the
+backend; startup refuses `auto` outside development. Deriving the RP ID from the
+request `Host` header would let a forged host select the passkey scope. The
+cleartext `http://<rp_id>:8000` WebAuthn origin is added only in development.
 
 ## PC agent authentication
 

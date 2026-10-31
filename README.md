@@ -50,8 +50,9 @@ launches via `pythonw.exe`, which Smart App Control allows).
 (allow "install unknown apps" when prompted).
 
 You still need to **host the backend** yourself (one-time, a few minutes) — see
-[Quick start](#quick-start). The Windows app and the phone app both need only two
-things: your backend **URL** and your **API token**.
+[Quick start](#quick-start). The Windows app needs your backend **URL** and **API
+token**; the phone uses the same two, plus the **enrollment token** once a
+passkey exists.
 
 ## How it works
 
@@ -88,18 +89,23 @@ token could try to enroll a device.
 
 ### 1. Host the backend
 
-For deployment, set both the **owner API token** and a stable **server signing
-key**. The database URL and WebAuthn relying-party domain can be detected
-automatically.
+For deployment, set the **owner API token**, a second **enrollment token**, a
+stable **server signing key**, and pin **`BIO_RP_ID`** to the domain the backend
+is served from. The database URL is detected automatically.
 
 **Vercel (recommended, serverless):** import this repo, set the project's **Root
-Directory** to `server`, **connect a database** (Storage tab), and add both
+Directory** to `server`, **connect a database** (Storage tab), and add the
 required secrets:
 
 ```
 BIO_API_TOKEN = <your-secret>
+BIO_ENROLLMENT_TOKEN = <another-secret>
 BIO_SIGNING_KEY = <stable-ed25519-private-key-pem>
+BIO_RP_ID = biounlock.example.com
 ```
+
+`BIO_RP_ID` is your WebAuthn domain without scheme or port. Outside development
+the server refuses to start with the `auto` default.
 
 Then run the migrations once against that database. Full steps:
 [`server/README.md`](server/README.md).
@@ -117,7 +123,9 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 Install `app-release.apk` from [Releases](https://github.com/SrijithK-Labs/BioUnlock/releases)
 (or build it — see [`mobile/biounlock_mobile/README.md`](mobile/biounlock_mobile/README.md)).
 In the app open **Settings → Server**, enter your backend URL, then enter the same
-**API token**.
+**API token**. The first passkey can be added with that token alone; afterwards
+also enter the **enrollment token** under Settings so the app may add or remove
+passkeys.
 
 Real passkeys need an HTTPS domain with a Digital Asset Links association (your
 backend URL). See [`docs/mobile.md`](docs/mobile.md) for the passkey requirement
@@ -137,9 +145,9 @@ the agent authenticates with its own signed device key. To unlock the actual
 logon screen, store your Windows password in the tray. Full steps:
 [`pc-agent/README.md`](pc-agent/README.md).
 
-## Configuration: just the token
+## Configuration: two tokens
 
-Set `BIO_API_TOKEN` in three places — that is the only shared secret:
+`BIO_API_TOKEN` is shared by all three components:
 
 1. **Server** — as a Vercel environment variable (or `server/.env` locally).
 2. **Phone** — Settings → API token.
@@ -148,9 +156,19 @@ Set `BIO_API_TOKEN` in three places — that is the only shared secret:
 The phone sends it as `Authorization: Bearer <token>` on every owner call, and
 the PC agent sends it once when enrolling, then authenticates with its own signed
 device key. In production the server refuses owner endpoints if the token is
-unset (fail closed). Packaged mobile and Windows apps require HTTPS. Mobile
-debug builds allow private-LAN HTTP; PC source runs require the explicit
-`BIOUNLOCK_ALLOW_INSECURE_HTTP=1` development opt-in.
+unset (fail closed).
+
+`BIO_ENROLLMENT_TOKEN` is a second secret shared by the server and the phone
+(Settings → Enrollment token). The first passkey bootstraps with the API token
+alone; after that, adding or removing a passkey also requires this token as
+`X-BioUnlock-Enrollment`, so a leaked API token cannot enroll an attacker's
+passkey. A deployment that already has a passkey fails closed when this token is
+unset.
+
+Pinned `BIO_RP_ID` is the WebAuthn domain (no scheme or port). Changing it later
+invalidates every registered passkey. Packaged mobile and Windows apps require
+HTTPS. Mobile debug builds allow private-LAN HTTP; PC source runs require the
+explicit `BIOUNLOCK_ALLOW_INSECURE_HTTP=1` development opt-in.
 
 ## Build from source
 

@@ -17,8 +17,10 @@ password and never claims an unlock that did not happen.
 The app never hardcodes a backend. The user enters the backend base URL in
 **Settings → Server** and taps **Test Connection**. Development hosts
 (`localhost`, loopback, and private LAN ranges) may use `http://`; any other
-host must be `https://`. The URL and owner API token are stored with
-`flutter_secure_storage`.
+host must be `https://`. The URL, owner API token, and optional enrollment token
+are stored with `flutter_secure_storage`. The first passkey can be registered
+with the API token alone; afterwards, changing passkeys requires the enrollment
+token under **Settings → Enrollment token**.
 
 From the Android emulator, the host machine is reachable at `http://10.0.2.2:8000`.
 
