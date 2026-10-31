@@ -22,6 +22,14 @@ entrypoint = "app.main:app"
 3. Vercel pins a Python version; add a `server/.python-version` (e.g. `3.12`) if
    you want it fixed.
 
+## Automatic Git deployments are off
+
+`server/vercel.json` sets `git.deploymentEnabled` to `false`, so pushing to the
+repository does not create a Vercel deployment or a deployment record on
+GitHub. Deploy from the Vercel dashboard or with `vercel --prod` once the
+environment variables are set. Turn auto-deploy back on by setting the flag to
+`true`.
+
 ## Keep secrets out of GitHub
 
 - **Never commit a real `.env`.** It is already ignored by the root and
