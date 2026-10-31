@@ -12,50 +12,106 @@ independently. It is **single-owner**: no accounts, no sessions.
 The whole point of this service is to be small and boring to host. Set the owner
 API token and a stable server signing key as deployment secrets.
 
-## Deploy to Vercel (recommended)
+## Setup (Vercel, recommended)
+
+Ten minutes, once. Nothing below has to be repeated later.
+
+### 1. Import the repo and connect a database
 
 1. **Import the repo** at [vercel.com/new](https://vercel.com/new).
 2. Set the project's **Root Directory** to `server`. Vercel detects the FastAPI
    app through `[tool.vercel] entrypoint = "app.main:app"` in `pyproject.toml`
    and installs dependencies with `uv` — no build command needed.
 3. **Connect a database.** In the **Storage** tab, connect a Postgres database
-   to this project. Vercel injects the connection string (often store-prefixed,
-   e.g. `biounlockdb_DATABASE_URL`); the app detects it automatically, so you do
-   **not** set a database URL by hand.
-4. **Add the deployment secrets.** Add these **Environment Variables**:
+   (Neon works well) to this project. Vercel injects the connection string
+   (often store-prefixed, e.g. `biounlockdb_DATABASE_URL`); the app detects it
+   automatically, so you do **not** set a database URL by hand.
 
-   | Name | Value |
-   | --- | --- |
-   | `BIO_API_TOKEN` | a long random string (see below) |
-   | `BIO_ENROLLMENT_TOKEN` | a second long random string, entered in the phone after the first passkey |
-   | `BIO_SIGNING_KEY` | stable Ed25519 private key PEM (generate once and retain) |
-   | `BIO_RP_ID` | the domain Vercel serves, e.g. `biounlock.example.com` (no scheme or port) |
+### 2. Generate the three secrets
 
-   `BIO_ENVIRONMENT` follows `VERCEL_ENV` on Vercel and defaults to production.
-   Outside development, `BIO_RP_ID` must be pinned; leaving it at `auto` stops
-   startup.
-5. **Deploy.**
-6. **Run the migrations once** against the new database (see
-   [Migrations](#migrations)). SQLite would not persist on Vercel, so this step
-   is what creates your schema in Postgres.
-
-Generate the API token with:
+Run these once, from a clone of this repository:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-Enter the same token in the phone app (**Settings → API token**) and the Windows
-agent (**Link this PC**). Without it, the server refuses every owner endpoint
-in production — so a misconfigured deploy fails closed. Generate the second
-secret the same way and enter it in the phone as **Settings → Enrollment
-token**: the first passkey can be registered with the API token alone, but every
-later add/remove also requires this value.
-Generate the signing key once from `server/` with:
-
-```bash
+cd server
+python -c "import secrets; print(secrets.token_urlsafe(32))"                      # API token
+python -c "import secrets; print(secrets.token_urlsafe(32))"                      # enrollment token
 python -c "from app.core.security import ServerSigningKey; print(ServerSigningKey.generate().to_pem())"
 ```
+
+The last one prints an Ed25519 private key in PEM form. **Keep a copy of it.**
+That key is the server's identity: every paired PC pins its public half, so
+generating a new one means re-pairing every PC. If the Vercel project already
+has a `BIO_SIGNING_KEY`, reuse that value instead of generating a new key.
+
+### 3. Add the environment variables
+
+Project → **Settings** → **Environment Variables**, for **Production**:
+
+| Name | Value |
+| --- | --- |
+| `BIO_API_TOKEN` | the API token from step 2 |
+| `BIO_ENROLLMENT_TOKEN` | the enrollment token from step 2 |
+| `BIO_SIGNING_KEY` | the whole PEM block from step 2, real line breaks included |
+| `BIO_RP_ID` | the domain Vercel serves, e.g. `biounlock.example.com` (no scheme or port) |
+
+`BIO_ENVIRONMENT` follows `VERCEL_ENV` on Vercel and defaults to production.
+Outside development, `BIO_RP_ID` must be pinned; leaving it at `auto` stops
+startup. The server also refuses to start without `BIO_SIGNING_KEY`.
+
+Enter the API token in the phone app (**Settings → API token**) and in the
+Windows agent (**Link this PC**). Enter the enrollment token in the phone as
+**Settings → Enrollment token**: the first passkey can be registered with the
+API token alone, but every later add or remove also requires this value.
+
+### 4. Deploy, then create the schema
+
+Deploy from the **Deployments** tab. Git auto-deploys are switched off in this
+repository (`server/vercel.json`), so pushing to GitHub does not deploy —
+use **Redeploy** in the dashboard after changing environment variables.
+
+Then run the migrations **once** against the database (see
+[Migrations](#migrations)):
+
+```powershell
+cd server
+$env:BIO_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME"
+.\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+Until this runs, **every request returns HTTP 500**: the app starts against an
+empty database and has nowhere to keep the server configuration. The schema
+lives in Postgres, so it survives every later deploy and never needs running
+again unless a new migration is added.
+
+### 5. Check that it is alive
+
+```powershell
+curl.exe https://<your-domain>/api/v1/health/live
+```
+
+A `200` means the backend is up. The Digital Asset Links document that Android
+needs for passkeys is served at
+`https://<your-domain>/.well-known/assetlinks.json`.
+
+### What the server does on its own
+
+- Reads the environment from `VERCEL_ENV`, so `/docs` stays off in production.
+- Detects the Postgres URL from `DATABASE_URL` / `POSTGRES_URL` / any
+  `*_DATABASE_URL` variable.
+- Serves the Digital Asset Links document with the bundled release certificate
+  fingerprint, so the shipped APK is associated with your domain.
+- Derives the allowed WebAuthn origins from `BIO_RP_ID` and the asset links, so
+  `BIO_ALLOWED_ORIGINS` is only needed for extra browser origins.
+
+### If something is wrong
+
+| Symptom | Cause |
+| --- | --- |
+| Every route returns HTTP 500 | `BIO_SIGNING_KEY` missing or malformed, or the schema was never created |
+| `BIO_RP_ID must be pinned …` | `BIO_RP_ID` is unset or still `auto` outside development |
+| `BIO_API_TOKEN is required` | `BIO_API_TOKEN` is unset |
+| `BIO_ENROLLMENT_TOKEN is required` | A passkey exists and `BIO_ENROLLMENT_TOKEN` is unset |
+| Passkey creation fails on the phone | The APK's signing certificate is not in the served asset links |
 
 ## Run on a VM
 

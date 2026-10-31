@@ -22,11 +22,11 @@ Prebuilt artifacts are attached to
 
 | Platform | Files | What it is |
 | --- | --- | --- |
-| Windows | `BioUnlock.exe` | Self-installing tray app that links and controls the PC |
-| Android | `app-release.apk` | Phone authenticator (passkey) |
+| Windows | `BioUnlock-0.1.0-windows-x64.exe` | Self-installing tray app that links and controls the PC |
+| Android | `BioUnlock-1.0.0-android.apk` | Phone authenticator (passkey) |
 
-**Windows app:** download `BioUnlock.exe` and run it. It installs itself — one
-file, no separate script — through a small setup wizard:
+**Windows app:** download `BioUnlock-0.1.0-windows-x64.exe` and run it. It
+installs itself — one file, no separate script — through a small setup wizard:
 
 ```powershell
 .\BioUnlock.exe install
@@ -46,8 +46,8 @@ Control** blocks the unsigned `.exe`, install from source with
 `powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource` (it
 launches via `pythonw.exe`, which Smart App Control allows).
 
-**Phone app:** download `app-release.apk` and open it on your phone to install
-(allow "install unknown apps" when prompted).
+**Phone app:** download `BioUnlock-1.0.0-android.apk` and open it on your phone
+to install (allow "install unknown apps" when prompted).
 
 You still need to **host the backend** yourself (one-time, a few minutes) — see
 [Quick start](#quick-start). The Windows app needs your backend **URL** and **API
@@ -89,38 +89,54 @@ token could try to enroll a device.
 
 ### 1. Host the backend
 
-For deployment, set the **owner API token**, a second **enrollment token**, a
-stable **server signing key**, and pin **`BIO_RP_ID`** to the domain the backend
-is served from. The database URL is detected automatically.
+One-time setup, about ten minutes. In order:
 
-**Vercel (recommended, serverless):** import this repo, set the project's **Root
-Directory** to `server`, **connect a database** (Storage tab), and add the
-required secrets:
+1. **Deploy the server.** Import this repo at [vercel.com/new](https://vercel.com/new),
+   set the project's **Root Directory** to `server`, and connect a Postgres
+   database in the **Storage** tab. The connection string is detected
+   automatically.
+2. **Generate three values**, from a clone of this repository:
 
-```
-BIO_API_TOKEN = <your-secret>
-BIO_ENROLLMENT_TOKEN = <another-secret>
-BIO_SIGNING_KEY = <stable-ed25519-private-key-pem>
-BIO_RP_ID = biounlock.example.com
-```
+   ```bash
+   cd server
+   python -c "import secrets; print(secrets.token_urlsafe(32))"   # API token
+   python -c "import secrets; print(secrets.token_urlsafe(32))"   # enrollment token
+   python -c "from app.core.security import ServerSigningKey; print(ServerSigningKey.generate().to_pem())"
+   ```
 
-`BIO_RP_ID` is your WebAuthn domain without scheme or port. Outside development
-the server refuses to start with the `auto` default.
+   The last one prints an Ed25519 private key. Keep a copy: it is the server's
+   identity, and every paired PC pins its public half.
 
-Then run the migrations once against that database. Full steps:
+3. **Add them as environment variables**: `BIO_API_TOKEN`, `BIO_ENROLLMENT_TOKEN`,
+   `BIO_SIGNING_KEY` (the whole PEM block, line breaks included) and `BIO_RP_ID`
+   = the domain you serve from, without scheme or port. Outside development the
+   server refuses to start without the signing key and a pinned RP ID.
+4. **Deploy, then create the schema.** Run the migrations once against the
+   database:
+
+   ```powershell
+   cd server
+   $env:BIO_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST/DBNAME"
+   .\.venv\Scripts\python.exe -m alembic upgrade head
+   ```
+
+   The app does not create tables itself, so **every route returns HTTP 500
+   until this has run**. The schema lives in Postgres and survives later
+   deploys.
+5. **Check** that `https://<your-domain>/api/v1/health/live` returns `200`.
+
+Everything else is automatic: the environment follows `VERCEL_ENV`, the database
+URL is detected, the Digital Asset Links document is served with the bundled
+release certificate, and the allowed WebAuthn origins follow `BIO_RP_ID`.
+
+Full steps, the "what is automatic" list, and a troubleshooting table:
 [`server/README.md`](server/README.md).
 
 **Any small VM:** see [`server/README.md`](server/README.md#run-on-a-vm).
 
-Generate the API token with:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
 ### 2. Phone app
 
-Install `app-release.apk` from [Releases](https://github.com/SrijithK-Labs/BioUnlock/releases)
+Install `BioUnlock-1.0.0-android.apk` from [Releases](https://github.com/SrijithK-Labs/BioUnlock/releases)
 (or build it — see [`mobile/biounlock_mobile/README.md`](mobile/biounlock_mobile/README.md)).
 In the app open **Settings → Server**, enter your backend URL, then enter the same
 **API token**. The first passkey can be added with that token alone; afterwards
@@ -133,7 +149,7 @@ and build troubleshooting.
 
 ### 3. Windows app
 
-Install `BioUnlock.exe` — it is self-installing (per-user, no admin needed) and
+Install `BioUnlock-0.1.0-windows-x64.exe` — it is self-installing (per-user, no admin needed) and
 bundles the Credential Provider plus a SYSTEM startup task, both registered after
 one UAC prompt so logon-screen unlock keeps working after a restart. Then in
 the tray app enter the backend **URL** and **API key** and click **Link this PC**,
