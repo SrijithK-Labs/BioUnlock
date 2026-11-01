@@ -104,8 +104,9 @@ WebAuthn assertions, or pairing codes. Sanitize URLs by stripping query strings.
 
 ## Experimental warning
 
-Windows logon unlocking is implemented but experimental. It stores a Windows
-credential locally with DPAPI; SYSTEM and local administrators can decrypt it
-when pre-login unlock is enabled. Use only on trusted machines, and do not rely
-on this project to protect production accounts until the Windows flow has been
-independently reviewed and tested on disposable Windows VMs.
+Windows logon unlocking is implemented and works end to end, but it has not been
+independently reviewed. It stores a Windows credential locally with DPAPI; SYSTEM
+and local administrators can decrypt it when pre-login unlock is enabled. Use it
+on machines you control, keep your password as a fallback (the password tile is
+never removed), and test on a disposable Windows VM before rolling it out widely.
+It is not recommended as the only credential on production accounts.

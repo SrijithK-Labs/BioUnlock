@@ -12,8 +12,11 @@ a signed request over the Internet; the PC independently verifies it and signs
 you in through a native Windows Credential Provider. The PC never opens an
 inbound port, and Bluetooth or "same Wi-Fi" is never required.
 
-> **Status: experimental.** It works end to end today. Don't use it where losing
-> your primary Windows credentials would be unacceptable.
+> **Status: experimental.** It works end to end today and is meant for your own
+> machine — your Windows password stays a working sign-in option throughout. It
+> has not been independently audited yet, so avoid making it the only credential
+> on a device you could not recover. [`SECURITY.md`](SECURITY.md) lists exactly
+> where each secret is stored.
 
 ## Download
 
