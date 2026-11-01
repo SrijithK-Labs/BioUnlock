@@ -15,7 +15,7 @@ without inbound ports or shared Wi-Fi/Bluetooth.
 ┌──────────────────┐     HTTPS      ┌─────────────────────┐     HTTPS + WS(outbound)
 │  Flutter app     │ ─────────────> │  FastAPI backend    │ <──────────────────┐
 │  (Android phone) │                │  (you host)         │                    │
-│  - passkey       │                │  - accounts         │    ┌──────────────┴───────────┐
+│  - passkey       │                │  - single owner     │    ┌──────────────┴───────────┐
 │  - biometric     │ <───────────── │  - pairing          │    │  Windows PC agent         │
 └──────────────────┘     HTTPS      │  - requests/signing │    │  - device ID (Ed25519)    │
                                     │  - delivery         │    │  - pinned server key      │

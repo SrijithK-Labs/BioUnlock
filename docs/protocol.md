@@ -6,7 +6,9 @@ just because it came from the backend.**
 
 ## Notation
 
-- `||` = byte concatenation
+- `|` separates fields inside a signing message (one literal pipe byte).
+- `||` below means byte concatenation of adjacent expressions, not a field
+  separator.
 - Ed25519 signatures are produced with `cryptography` (`cryptography.hazmat`).
 - Timestamps are UTC seconds since epoch.
 - DOT-notation JSON fields are used below; the exact wire encoding is the JSON
@@ -117,9 +119,12 @@ WebAuthn spec). It then submits:
 5. An **authorization envelope** is signed with the server signing key:
 
 ```
-sign_message = "biounlock-envelope-v1" || request_id || "biounlock" || pc_id ||
-               operation || issued_at || expires_at || nonce
+sign_message = "biounlock-envelope-v1" | request_id | "biounlock" | pc_id |
+               operation | issued_at | expires_at | nonce
 ```
+
+The `|` characters are literal separator bytes, so a complete message looks
+like `biounlock-envelope-v1|<request_id>|biounlock|<pc_id>|remote_unlock|<issued_at>|<expires_at>|<nonce>`.
 
 Envelope JSON delivered to the agent:
 

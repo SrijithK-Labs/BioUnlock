@@ -13,7 +13,7 @@ The app is generic — it is not tied to any server. You enter your backend
 
 ## Install
 
-1. Download `app-release.apk` from
+1. Download `BioUnlock-1.0.0-android.apk` from
    [Releases](https://github.com/SrijithK-Labs/BioUnlock/releases) and install it
    (allow install from your browser/files app when prompted).
 2. Open the app, go to **Settings → Server**, and enter your backend base URL
@@ -58,6 +58,11 @@ for updates; changing it breaks Android app association and may require passkey
 re-registration. Configure Digital Asset Links with the release signing
 certificate fingerprint, not the debug certificate.
 
+The backend serves the fingerprint bundled in `server/app/static_assets.py`
+(`ANDROID_SHA256_FINGERPRINTS`), which is the project's release certificate. If
+you sign with your own keystore, add your certificate's SHA-256 there too —
+otherwise Android refuses to create passkeys for your APK.
+
 Output APKs land in `build/app/outputs/flutter-apk/` (`app-debug.apk` or
 `app-release.apk`). Attach the release APK to a GitHub Release to distribute it.
 A physical Android 7.0 (API 24)+ device is required to exercise real passkeys —
@@ -86,8 +91,8 @@ incremental caches, corrupted Gradle caches).
 ```
 lib/
   main.dart, app.dart, config.dart   App entry, root gate, constants
-  models/                            Account, Device, AuthRequest, value types
-  services/                          ApiClient, SessionStore, PasskeyService
+  models/                            Device, AuthRequest, misc value types
+  services/                          ApiClient, token/URL stores, PasskeyService
   state/                             AppState + devices/passkeys/requests controllers
   screens/                           Setup, Auth, Home (4 tabs), scan, device detail
 android/                             Manifest (INTERNET, CAMERA), Gradle config

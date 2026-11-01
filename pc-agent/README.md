@@ -23,12 +23,13 @@ start/stop the background agent. It starts automatically at login.
 
 ## Install (end users)
 
-Download the prebuilt `BioUnlock.exe` from
+Download the prebuilt `BioUnlock-0.1.0-windows-x64.exe` from
 [**Releases**](https://github.com/SrijithK-Labs/BioUnlock/releases) — you do not
 need Python or any build tools. **The one `.exe` installs everything.**
 
-1. Double-click `BioUnlock.exe` (or run `BioUnlock.exe install` from a
-   terminal). Because it is not installed yet, it opens a small setup wizard:
+1. Double-click the `.exe` (or run
+   `BioUnlock-0.1.0-windows-x64.exe install` from a terminal). Because it is not
+   installed yet, it opens a small setup wizard:
    **Welcome → Choose your setup → Install → Finish**. On the options page you
    can turn off sign-in unlock, start-at-login, the Start Menu shortcut, or the
    post-install launch. The wizard copies the app to `%LOCALAPPDATA%\BioUnlock`
@@ -48,7 +49,7 @@ need Python or any build tools. **The one `.exe` installs everything.**
    **Link this PC** and scan the QR code with the phone app.
 
    The API key **is required** here. Linking enrolls this PC through the
-   backend's `POST /devices/enroll` endpoint, which is protected by your
+   backend's `POST /api/v1/devices/enroll` endpoint, which is protected by your
    backend's `BIO_API_TOKEN`, so someone who only knows your URL still cannot
    register a device. You only enter it once: the agent stores it
    (DPAPI-protected) and reuses it for future re-links. After pairing, the PC

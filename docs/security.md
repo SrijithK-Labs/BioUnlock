@@ -45,8 +45,8 @@ secret with no built-in expiry; rotate it immediately if exposed.
 An enrolled passkey can authorize every paired PC, so passkey changes are gated
 by a second secret once one exists. The first passkey is registered with
 `BIO_API_TOKEN` alone so a fresh deployment can be claimed. After that,
-`POST /webauthn/register/begin`, `POST /webauthn/register/complete`, and
-`DELETE /webauthn/credentials/{id}` also require `BIO_ENROLLMENT_TOKEN`, sent as
+`POST /api/v1/webauthn/register/begin`, `POST /api/v1/webauthn/register/complete`, and
+`DELETE /api/v1/webauthn/credentials/{id}` also require `BIO_ENROLLMENT_TOKEN`, sent as
 `X-BioUnlock-Enrollment`. A stolen API token alone therefore cannot enroll an
 attacker's passkey. A deployed server that already has a passkey fails closed
 when `BIO_ENROLLMENT_TOKEN` is unset. Rotate the enrollment token if it is

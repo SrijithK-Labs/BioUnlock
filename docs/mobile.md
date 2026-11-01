@@ -8,7 +8,9 @@ password and never claims an unlock that did not happen.
 
 - Flutter 3.47+ (Dart 3.13+) with the Android toolchain (`flutter doctor`).
 - Android SDK with a device/emulator on Android 7.0 (API 24)+. The Gradle config
-  pins `minSdk` to at least 23 (`android/app/build.gradle.kts`).
+  pins `minSdk = maxOf(flutter.minSdkVersion, 23)`
+  (`mobile/biounlock_mobile/android/app/build.gradle.kts`), which resolves to 24
+  with the current Flutter SDK.
 - A **physical device** is required to exercise real passkeys. Emulators do not
   have a hardware-backed authenticator.
 
@@ -34,7 +36,7 @@ against a real server you must:
    `https://unlock.example.com/.well-known/assetlinks.json` containing the app's
    package name (`com.biounlock.biounlock_mobile`) and the SHA-256 of the signing
    certificate.
-3. Ensure the backend `BIO_WEBAUTHN_RP_ID` matches that domain.
+3. Ensure the backend `BIO_RP_ID` matches that domain.
 
 Without the asset-links association, the OS refuses to create/use credentials for
 the domain. This means passkey **login cannot be tested against a bare
@@ -70,7 +72,7 @@ These are environment issues, not app bugs:
 
 - **`Could not close incremental caches ...` during Kotlin compilation.** A
   known Windows issue. The app disables Kotlin incremental compilation and the
-  Gradle build cache in `android/gradle.properties`
+  Gradle build cache in `mobile/biounlock_mobile/android/gradle.properties`
   (`kotlin.incremental=false`, `org.gradle.caching=false`).
 
 - **`Could not find EOCD ...` or zip errors from the Gradle cache.** Caused by
@@ -85,7 +87,7 @@ These are environment issues, not app bugs:
 
 The Gradle wrapper uses the `-bin` distribution (`gradle-9.3.1-bin.zip`) to keep
 the download smaller; that is set in
-`android/gradle/wrapper/gradle-wrapper.properties`.
+`mobile/biounlock_mobile/android/gradle/wrapper/gradle-wrapper.properties`.
 
 ## Project structure
 
@@ -93,7 +95,7 @@ the download smaller; that is set in
 lib/
   main.dart, app.dart, config.dart   App entry, root gate, constants
   models/                            Account, Device, AuthRequest, misc value types
-  services/                          ApiClient, SessionStore, PasskeyService
+  services/                          ApiClient, token/URL stores, PasskeyService
   state/                             AppState + devices/passkeys/requests controllers
   screens/                           Setup, Auth, Home (4 tabs), scan, device detail
 test/                                Unit + widget tests with fakes/mocks

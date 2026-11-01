@@ -35,9 +35,10 @@ Examples of unacceptable behaviour:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behaviour may be
-reported to the community leaders responsible for enforcement at the contact
-address listed in the git history. All complaints will be reviewed and
-investigated promptly and fairly.
+reported privately to the maintainer through GitHub — open a minimal issue
+asking for a private channel, or use the contact details on the
+[repository owner's profile](https://github.com/SrijithK-Labs). All complaints
+will be reviewed and investigated promptly and fairly.
 
 ## Attribution
 

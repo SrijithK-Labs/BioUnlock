@@ -28,11 +28,12 @@ Prebuilt artifacts are attached to
 | Windows | `BioUnlock-0.1.0-windows-x64.exe` | Self-installing tray app that links and controls the PC |
 | Android | `BioUnlock-1.0.0-android.apk` | Phone authenticator (passkey) |
 
-**Windows app:** download `BioUnlock-0.1.0-windows-x64.exe` and run it. It
-installs itself — one file, no separate script — through a small setup wizard:
+**Windows app:** download `BioUnlock-0.1.0-windows-x64.exe` and double-click it.
+It installs itself — one file, no separate script — through a small setup
+wizard. From a terminal, run:
 
 ```powershell
-.\BioUnlock.exe install
+.\BioUnlock-0.1.0-windows-x64.exe install
 ```
 
 The wizard lets you choose sign-in unlock, start-at-login, the Start Menu
@@ -44,10 +45,11 @@ Credential Provider and a SYSTEM startup task, which together power
 logon-screen unlock — including after a restart; declining shows a Retry button
 and just skips that step. That same prompt moves the agent's profile to
 `%ProgramData%\BioUnlock` and migrates an existing link automatically. For
-scripted installs use `BioUnlock.exe install --silent`. If Windows **Smart App
+scripted installs run
+`.\BioUnlock-0.1.0-windows-x64.exe install --silent`. If Windows **Smart App
 Control** blocks the unsigned `.exe`, install from source with
-`powershell -ExecutionPolicy Bypass -File install-agent.ps1 -FromSource` (it
-launches via `pythonw.exe`, which Smart App Control allows).
+`powershell -ExecutionPolicy Bypass -File pc-agent\install-agent.ps1 -FromSource`
+(it launches via `pythonw.exe`, which Smart App Control allows).
 
 **Phone app:** download `BioUnlock-1.0.0-android.apk` and open it on your phone
 to install (allow "install unknown apps" when prompted).
@@ -157,7 +159,7 @@ bundles the Credential Provider plus a SYSTEM startup task, both registered afte
 one UAC prompt so logon-screen unlock keeps working after a restart. Then in
 the tray app enter the backend **URL** and **API key** and click **Link this PC**,
 scanning the QR code with the phone. The API key is needed because linking
-enrolls the PC through the backend's `POST /devices/enroll` endpoint, which your
+enrolls the PC through the backend's `POST /api/v1/devices/enroll` endpoint, which your
 backend protects with `BIO_API_TOKEN` — so a stranger who only knows the URL
 still cannot add a device. It is entered once and stored on the PC; afterwards
 the agent authenticates with its own signed device key. To unlock the actual

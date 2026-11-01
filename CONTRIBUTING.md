@@ -13,8 +13,9 @@ Thanks for considering a contribution to BioUnlock!
 
 - Python code: type hints everywhere, modular packages, no comments unless
   they explain "why". Run `ruff` if available (`pip install ruff`).
-- Dart code: follow `flutter_lints` defaults; Feature-first layout under
-  `mobile/biounlock_mobile/lib/features/`.
+- Dart code: follow `flutter_lints` defaults; keep the existing layout under
+  `mobile/biounlock_mobile/lib/` (`screens/`, `state/`, `services/`, `models/`,
+  `widgets/`).
 - Tests are required for new backend behaviour and for the PC agent. Flutter
   widget/logic tests are welcome for new screens.
 - Do not hardcode backend URLs. All servers must be user-configurable.

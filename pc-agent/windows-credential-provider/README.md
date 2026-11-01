@@ -60,9 +60,9 @@ python -m biounlock_agent clear-credential
 ```
 
 If the elevated PowerShell runs under a different administrator account, pass
-the intended user's SID with `-InstallUserSid`; obtain it by running `whoami
-`whoami /user` in that user's session. The packaged installer captures the original
-user SID before requesting elevation.
+the intended user's SID with `-InstallUserSid`; obtain it with `whoami /user` in
+that user's session. The packaged installer captures the original user SID
+before requesting elevation.
 
 ## Security trade-offs
 

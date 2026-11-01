@@ -70,7 +70,7 @@ supervisor loop, not a Windows service:
 
 The `BioUnlock.exe install` step (the wizard's Install page) copies the agent
 and credential provider to `%ProgramFiles%\BioUnlock` with SYSTEM/admin write
-and standard-user read/execute permissions. It and `install-agent.ps1` perform
+and standard-user read/execute permissions. It and `pc-agent/install-agent.ps1` perform
 the profile move automatically: it copies
 `config.json`, re-protects `device_key.bin`, `api_token.bin`, and
 `windows_credential.bin` to machine scope, and writes the `service.json` marker
@@ -85,9 +85,9 @@ switches to the shared home and machine-scope secrets too.
 
 Source-based LocalSystem service installation is disabled. A service importing
 Python code from a user-writable checkout would allow privilege escalation.
-`uninstall-service.ps1` exists only to remove legacy installations safely.
+`pc-agent/uninstall-service.ps1` exists only to remove legacy installations safely.
 
-To remove the packaged install, run `uninstall-agent.ps1`; it stops and
+To remove the packaged install, run `pc-agent/uninstall-agent.ps1`; it stops and
 unregisters the `BioUnlockAgent` task (one UAC prompt, or pass
 `-KeepSystemAgent` to keep it) and leaves `%ProgramData%\BioUnlock` in place so
 the enrollment survives.
