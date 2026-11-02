@@ -12,6 +12,15 @@ if (signingPropertiesFile.isFile) {
     signingPropertiesFile.inputStream().use(signingProperties::load)
 }
 
+// WebAuthn relying-party host baked into the App Links filter and the Digital
+// Asset Links statement. Provide the real domain locally, either with
+// `-PrpHost=unlock.example.com` or with `rpHost=unlock.example.com` in the
+// gitignored key.properties. The default is a reserved example domain so no
+// real deployment is ever committed to the repository.
+val rpHost: String = providers.gradleProperty("rpHost").orNull
+    ?: signingProperties.getProperty("rpHost")
+    ?: "biounlock.example.com"
+
 val requiredSigningProperties = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
 val missingSigningProperties = requiredSigningProperties.filter {
     signingProperties.getProperty(it).isNullOrBlank()
@@ -36,6 +45,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        resValues = true
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.biounlock.biounlock_mobile"
@@ -49,6 +62,13 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        manifestPlaceholders["rpHost"] = rpHost
+        resValue(
+            "string",
+            "asset_statements",
+            "[{\"include\": \"https://$rpHost/.well-known/assetlinks.json\"}]",
+        )
     }
 
     signingConfigs {

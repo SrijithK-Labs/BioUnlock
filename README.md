@@ -4,19 +4,88 @@
   <img src="logo/logo.png" alt="BioUnlock logo" width="140" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/SrijithK-Labs/BioUnlock/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SrijithK-Labs/BioUnlock/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/SrijithK-Labs/BioUnlock/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/SrijithK-Labs/BioUnlock?sort=semver&amp;label=release"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2f6feb.svg"></a>
+  <img alt="Platforms: Android and Windows" src="https://img.shields.io/badge/platform-Android%20%C2%B7%20Windows-1a7f37.svg">
+</p>
+
 **Unlock your Windows PC with your phone's fingerprint — from anywhere.**
 
 BioUnlock pairs an Android phone with a Windows PC through a small backend you
-host yourself. Approve an unlock with the phone's biometrics and the phone sends
-a signed request over the Internet; the PC independently verifies it and signs
-you in through a native Windows Credential Provider. The PC never opens an
-inbound port, and Bluetooth or "same Wi-Fi" is never required.
+host yourself. Approve an unlock with the phone's biometrics, and the backend
+returns a short-lived, signed authorization that the PC verifies independently
+before signing you in through a native Windows Credential Provider. The PC never
+opens an inbound port, and Bluetooth or "same Wi-Fi" is never required.
 
 > **Status: experimental.** It works end to end today and is meant for your own
 > machine — your Windows password stays a working sign-in option throughout. It
 > has not been independently audited yet, so avoid making it the only credential
 > on a device you could not recover. [`SECURITY.md`](SECURITY.md) lists exactly
 > where each secret is stored.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/assets/screenshots/app-pcs-dark.png" width="250" alt="BioUnlock on a Pixel 7a: one paired Windows PC, online, with a Pair PC button; the device name is pixelated"></td>
+    <td align="center"><img src="docs/assets/screenshots/app-activity-dark.png" width="250" alt="Activity screen listing verified and expired unlock and lock requests for the past 30 days; the PC name is pixelated"></td>
+    <td align="center"><img src="docs/assets/screenshots/app-settings-dark.png" width="250" alt="Settings screen showing a connected self-hosted server with the hostname pixelated, plus the theme and server sections"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Paired PCs</b><br><sub>online state and pairing</sub></td>
+    <td align="center"><b>Activity</b><br><sub>every request, truthful result</sub></td>
+    <td align="center"><b>Settings</b><br><sub>your own backend</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/screenshots/app-passkeys-dark.png" width="250" alt="Passkeys screen listing one platform passkey added on 2026-10-11"></td>
+    <td align="center"><img src="docs/assets/screenshots/app-pcs-light.png" width="250" alt="The same paired-PC screen in the light theme, with the device name pixelated"></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Passkeys</b><br><sub>platform WebAuthn credential</sub></td>
+    <td align="center"><b>Light theme</b><br><sub>system / light / dark</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+<p align="center"><sub>Captured on a Pixel 7a running Android 17. Device names and the backend hostname are pixelated for privacy.</sub></p>
+
+
+## Highlights
+
+- **Real Windows logon integration.** A native C++ COM **Credential Provider**
+  registered for the secure desktop — not an RDP session, an autologon hack, or
+  simulated input.
+- **Passkeys end to end.** The backend is a WebAuthn relying party; the app is
+  built against your domain and the server serves the matching
+  [Digital Asset Links](server/app/static_assets.py) document, so the passkey is
+  bound to that domain.
+- **Signed, short-lived, single-use envelopes.** Every authorization is Ed25519
+  signed by the server, verified by the PC against a key pinned at pairing, and
+  rejected on expiry, duplicate id, or replayed nonce.
+- **No inbound ports.** The PC keeps an outbound WebSocket with keepalive and a
+  silent-socket timeout, and falls back to polling a REST inbox when the socket
+  dies.
+- **Defense in depth.** Two separate tokens (API + enrollment), per-route rate
+  limiting, a single-owner model, and fail-closed startup when secrets are
+  missing.
+- **One-file installer.** A self-installing tray app that optionally registers the
+  Credential Provider and a SYSTEM startup task after a single UAC prompt.
+- **Tested and documented.** 277 automated tests across three languages
+  (`pytest` for the backend and Windows agent, `flutter test` for the app), CI on
+  every push, plus a protocol spec, threat model, and security notes.
+
+## Tech stack
+
+| Layer | Built with |
+| --- | --- |
+| Android app | Flutter / Dart 3.13, Material 3, `passkeys` (WebAuthn), `flutter_secure_storage`, `mobile_scanner` |
+| Backend | Python 3.11, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, PostgreSQL, `webauthn`, `cryptography` (Ed25519) |
+| Windows agent | Python 3.11 tray app, Win32 + DPAPI, outbound WebSocket with REST fallback |
+| Windows sign-in | C++ Credential Provider (COM), built with the bundled build script |
+| CI | GitHub Actions: pytest + ruff (server, agent) and `flutter analyze` + `flutter test` |
 
 ## Download
 
@@ -54,22 +123,27 @@ Control** blocks the unsigned `.exe`, install from source with
 **Phone app:** download `BioUnlock-1.0.0-android.apk` and open it on your phone
 to install (allow "install unknown apps" when prompted).
 
-You still need to **host the backend** yourself (one-time, a few minutes) — see
+> **Passkey note:** the prebuilt APK is bound to the reserved
+> `biounlock.example.com` relying-party host, because your own domain cannot be
+> known at release time. To use passkeys with your backend, rebuild the APK with
+> `rpHost=<your-domain>` in `android/key.properties` (see
+> [`docs/mobile.md`](docs/mobile.md)). Without that step Android refuses to
+> create or use passkeys for your domain.
+
+You still need to **host the backend** yourself (one-time, about ten minutes) — see
 [Quick start](#quick-start). The Windows app needs your backend **URL** and **API
 token**; the phone uses the same two, plus the **enrollment token** once a
 passkey exists.
 
 ## How it works
 
-```
-  Phone (passkey)            Your backend                 Windows PC
-  ───────────────  request   ─────────────    envelope   ──────────────
-  biometric  ─────────────▶  verify + sign  ───────────▶ agent verifies
-  approval                   & store                    signature + replay
-                                                            │
-                                                            ▼
-                                              Credential Provider signs in
-```
+<p align="center">
+  <img src="docs/assets/architecture.svg" alt="Architecture: a Flutter phone talks HTTPS to a self-hosted FastAPI backend, which pushes signed envelopes over HTTPS or an outbound WebSocket to a Windows PC agent that signs the user in through a Credential Provider.">
+</p>
+
+<p align="center">
+  <img src="docs/assets/unlock-flow.svg" alt="Unlock flow: biometric approval on the phone, verification and signing on the backend, independent verification on the PC, then sign-in through Windows.">
+</p>
 
 The phone's passkey private key never leaves the phone, and every action is
 authorized by a short-lived, single-use, Ed25519-signed envelope that the PC
@@ -149,8 +223,10 @@ also enter the **enrollment token** under Settings so the app may add or remove
 passkeys.
 
 Real passkeys need an HTTPS domain with a Digital Asset Links association (your
-backend URL). See [`docs/mobile.md`](docs/mobile.md) for the passkey requirement
-and build troubleshooting.
+backend URL), and the app must be built for that domain: add
+`rpHost=<your-domain>` to `android/key.properties` before building. See
+[`docs/mobile.md`](docs/mobile.md) for the passkey requirement and build
+troubleshooting.
 
 ### 3. Windows app
 
@@ -211,6 +287,9 @@ cd server && pytest && ruff check .          # backend
 cd pc-agent && pytest && ruff check .         # Windows agent
 cd mobile/biounlock_mobile && flutter analyze && flutter test   # phone
 ```
+
+[GitHub Actions](.github/workflows/ci.yml) runs all three suites — backend and
+agent on Python 3.11, the app on Flutter 3.47 — on every push and pull request.
 
 ## Security
 

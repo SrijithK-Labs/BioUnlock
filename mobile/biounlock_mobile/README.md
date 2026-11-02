@@ -51,6 +51,8 @@ storeFile=app/upload-keystore.jks
 storePassword=<your-keystore-password>
 keyAlias=upload
 keyPassword=<your-key-password>
+# WebAuthn relying-party domain: must match BIO_RP_ID and your assetlinks host
+rpHost=unlock.example.com
 ```
 
 Never commit either file or share the private key. Use the same signing identity
@@ -80,6 +82,9 @@ a real server it must:
    certificate.
 3. Have `BIO_RP_ID` pinned to that domain. (Development may use `auto`, which
    follows the request host; deployed servers refuse it.)
+4. Build the app with `rpHost` set to that domain (see `key.properties` above),
+   so the manifest App Links filter and the Digital Asset Links statement point
+   at it. The committed default is the reserved `biounlock.example.com`.
 
 Because of this, passkey login cannot be tested against a bare `localhost` RP on
 a physical device. See [`../../docs/mobile.md`](../../docs/mobile.md) for the

@@ -11,17 +11,10 @@ without inbound ports or shared Wi-Fi/Bluetooth.
 
 ## Components
 
-```
-┌──────────────────┐     HTTPS      ┌─────────────────────┐     HTTPS + WS(outbound)
-│  Flutter app     │ ─────────────> │  FastAPI backend    │ <──────────────────┐
-│  (Android phone) │                │  (you host)         │                    │
-│  - passkey       │                │  - single owner     │    ┌──────────────┴───────────┐
-│  - biometric     │ <───────────── │  - pairing          │    │  Windows PC agent         │
-└──────────────────┘     HTTPS      │  - requests/signing │    │  - device ID (Ed25519)    │
-                                    │  - delivery         │    │  - pinned server key      │
-                                    └─────────────────────┘    │  - verifier               │
-                                                               └───────────────────────────┘
-```
+![Architecture: a Flutter phone talks HTTPS to a self-hosted FastAPI backend, which delivers signed envelopes to a Windows PC agent over an outbound WebSocket or REST inbox. The agent signs the user in through a native Windows Credential Provider.](assets/architecture.svg)
+
+The phone and the PC agent make only outbound connections; nothing listens on
+the PC for inbound traffic.
 
 - **Phone**: authenticates the human via the platform passkey provider
   (biometric-backed WebAuthn). The server is the WebAuthn Relying Party (RP).
@@ -48,6 +41,8 @@ pairing — the PC agent will not accept requests from a server it did not pair
 with.
 
 ## Data flow: remote authentication request
+
+![Unlock flow in four stages: biometric approval on the phone, WebAuthn verification and envelope signing on the backend, independent verification on the PC, then sign-in through the native Windows Credential Provider.](assets/unlock-flow.svg)
 
 1. **Phone** (authenticated, WebAuthn user) requests a challenge for a target
    PC: `POST /api/v1/auth/challenges`.

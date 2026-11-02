@@ -74,7 +74,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'BioUnlock is self-hosted. Enter your server address — a LAN '
+                    'BioUnlock is self-hosted. Enter your server address â€” a LAN '
                     'URL like http://192.168.1.10:8000 or an https:// tunnel.',
                     textAlign: TextAlign.center,
                     style: context.texts.bodyMedium?.copyWith(

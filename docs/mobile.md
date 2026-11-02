@@ -37,6 +37,12 @@ against a real server you must:
    package name (`com.biounlock.biounlock_mobile`) and the SHA-256 of the signing
    certificate.
 3. Ensure the backend `BIO_RP_ID` matches that domain.
+4. Build the app against that domain. The App Links filter and the Digital Asset
+   Links statement are generated from `rpHost`, which defaults to the reserved
+   `biounlock.example.com`. Set the real host locally, without committing it, by
+   adding `rpHost=unlock.example.com` to the gitignored
+   `mobile/biounlock_mobile/android/key.properties` (or by passing
+   `-PrpHost=unlock.example.com` to a direct Gradle invocation).
 
 Without the asset-links association, the OS refuses to create/use credentials for
 the domain. This means passkey **login cannot be tested against a bare

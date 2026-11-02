@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img" aria-labelledby="flowTitle flowDesc">
+  <title id="flowTitle">What happens during a BioUnlock remote unlock</title>
+  <desc id="flowDesc">Four stages: the phone approves with a passkey; the backend verifies the assertion and issues a signed envelope; the PC agent verifies that envelope independently; Windows signs the user in through the native Credential Provider.</desc>
+
+  <defs>
+    <style>
+      .title { font: 700 30px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .subtitle { font: 400 15px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+      .role { font: 700 11px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing: 1.4px; }
+      .step-title { font: 700 18px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .step-line { font: 400 12.5px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+      .foot { font: 400 13px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+    </style>
+    <marker id="flowArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#afb8c1"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="430" fill="#ffffff"/>
+
+  <text class="title" x="40" y="58">What happens during an unlock</text>
+  <text class="subtitle" x="40" y="90">One round trip, four independent checks. Anything that fails at any step means nothing is unlocked.</text>
+
+  <!-- 1 -->
+  <rect x="40" y="130" width="250" height="200" rx="14" fill="#ddf4ff" stroke="#b6e3ff"/>
+  <text class="role" x="64" y="160" fill="#0969da">1 · PHONE</text>
+  <text class="step-title" x="64" y="196">Biometric approval</text>
+  <text class="step-line" x="64" y="230">Platform passkey signs</text>
+  <text class="step-line" x="64" y="252">the server's challenge.</text>
+
+  <!-- 2 -->
+  <rect x="330" y="130" width="250" height="200" rx="14" fill="#fbefff" stroke="#e9d2ff"/>
+  <text class="role" x="354" y="160" fill="#8250df">2 · BACKEND</text>
+  <text class="step-title" x="354" y="196">Verify + sign</text>
+  <text class="step-line" x="354" y="230">WebAuthn assertion checked,</text>
+  <text class="step-line" x="354" y="252">Ed25519 envelope issued.</text>
+
+  <!-- 3 -->
+  <rect x="620" y="130" width="250" height="200" rx="14" fill="#dafbe1" stroke="#aceebb"/>
+  <text class="role" x="644" y="160" fill="#1a7f37">3 · PC AGENT</text>
+  <text class="step-title" x="644" y="196">Verify independently</text>
+  <text class="step-line" x="644" y="230">Signature, ids, expiry and</text>
+  <text class="step-line" x="644" y="252">nonce checked locally.</text>
+
+  <!-- 4 -->
+  <rect x="910" y="130" width="250" height="200" rx="14" fill="#fff8c5" stroke="#f2e08a"/>
+  <text class="role" x="934" y="160" fill="#9a6700">4 · WINDOWS</text>
+  <text class="step-title" x="934" y="196">Sign in</text>
+  <text class="step-line" x="934" y="230">Single-use ticket unlocks</text>
+  <text class="step-line" x="934" y="252">through the Credential</text>
+  <text class="step-line" x="934" y="274">Provider.</text>
+
+  <!-- connectors -->
+  <line x1="298" y1="230" x2="322" y2="230" stroke="#afb8c1" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="588" y1="230" x2="612" y2="230" stroke="#afb8c1" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+  <line x1="878" y1="230" x2="902" y2="230" stroke="#afb8c1" stroke-width="1.6" marker-end="url(#flowArrow)"/>
+
+  <line x1="40" y1="366" x2="1160" y2="366" stroke="#d8dee4" stroke-width="1"/>
+  <text class="foot" x="40" y="398">No inbound ports · no Bluetooth · no shared network · every step fails closed</text>
+</svg>

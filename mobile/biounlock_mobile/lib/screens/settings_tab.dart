@@ -62,7 +62,7 @@ class SettingsTab extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.link_rounded),
                   title: const Text('URL'),
-                  subtitle: Text(state.serverUrl ?? '—'),
+                  subtitle: Text(state.serverUrl ?? 'â€”'),
                   trailing: const Icon(Icons.edit_outlined),
                   onTap: () => _editServerUrl(context),
                 ),
@@ -71,7 +71,7 @@ class SettingsTab extends StatelessWidget {
                   leading: const Icon(Icons.key_rounded),
                   title: const Text('API key'),
                   subtitle: Text(
-                    (state.apiToken ?? '').isEmpty ? 'Not set' : '••••••••',
+                    (state.apiToken ?? '').isEmpty ? 'Not set' : 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢',
                   ),
                   trailing: const Icon(Icons.edit_outlined),
                   onTap: () => _editApiKey(context),
@@ -83,7 +83,7 @@ class SettingsTab extends StatelessWidget {
                   subtitle: Text(
                     (state.enrollmentToken ?? '').isEmpty
                         ? 'Not set'
-                        : '••••••••',
+                        : 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢',
                   ),
                   trailing: const Icon(Icons.edit_outlined),
                   onTap: () => _editEnrollmentToken(context),
