@@ -1,0 +1,9 @@
+# BioUnlock PC agent runtime dependencies.
+cryptography>=50.0.0
+httpx>=0.27
+websockets>=13
+pydantic>=2.7
+segno>=1.6
+pystray>=0.19
+Pillow>=10
+pywin32>=306; sys_platform == "win32"

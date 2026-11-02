@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="740" viewBox="0 0 1200 740" role="img" aria-labelledby="archTitle archDesc">
+  <title id="archTitle">BioUnlock architecture</title>
+  <desc id="archDesc">A Flutter Android phone talks HTTPS to a self-hosted FastAPI backend. The backend pushes short-lived Ed25519-signed envelopes over HTTPS or an outbound WebSocket to a Windows PC agent, which verifies them and signs the user in through a native Credential Provider. No inbound ports are opened on the PC.</desc>
+
+  <defs>
+    <style>
+      .title { font: 700 30px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .subtitle { font: 400 15px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+      .role { font: 700 11px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; letter-spacing: 1.4px; }
+      .card-title { font: 700 20px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .card-sub { font: 400 12.5px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+      .bullet { font: 400 12.5px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .wire { font: 600 11.5px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+      .wire-small { font: 400 10.5px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #8c959f; }
+      .panel-title { font: 700 18px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .tb-label { font: 600 13.5px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .tb-desc { font: 400 13px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+      .note { font: 400 12.5px ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #59636e; }
+      .divider { stroke: #d8dee4; stroke-width: 1; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#8c959f"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="740" fill="#ffffff"/>
+
+  <text class="title" x="40" y="58">BioUnlock architecture</text>
+  <text class="subtitle" x="40" y="90">Your phone proves who you are, your own backend relays a signed envelope, and the PC verifies it before signing you in.</text>
+
+  <!-- Phone -->
+  <rect x="40" y="140" width="270" height="300" rx="14" fill="#ddf4ff" stroke="#b6e3ff"/>
+  <text class="role" x="64" y="174" fill="#0969da">CLIENT</text>
+  <text class="card-title" x="64" y="210">Android phone</text>
+  <text class="card-sub" x="64" y="234">Flutter app + platform passkey</text>
+  <line class="divider" x1="64" y1="252" x2="286" y2="252"/>
+  <circle cx="70" cy="280" r="3" fill="#0969da"/>
+  <text class="bullet" x="84" y="284">Biometric approval</text>
+  <circle cx="70" cy="310" r="3" fill="#0969da"/>
+  <text class="bullet" x="84" y="314">Passkey stays in secure element</text>
+  <circle cx="70" cy="340" r="3" fill="#0969da"/>
+  <text class="bullet" x="84" y="344">Holds API + enrollment tokens</text>
+  <circle cx="70" cy="370" r="3" fill="#0969da"/>
+  <text class="bullet" x="84" y="374">Shows the verified result</text>
+
+  <!-- Backend -->
+  <rect x="465" y="140" width="270" height="300" rx="14" fill="#fbefff" stroke="#e9d2ff"/>
+  <text class="role" x="489" y="174" fill="#8250df">RELAY</text>
+  <text class="card-title" x="489" y="210">FastAPI backend</text>
+  <text class="card-sub" x="489" y="234">You host it · single owner</text>
+  <line class="divider" x1="489" y1="252" x2="711" y2="252"/>
+  <circle cx="495" cy="280" r="3" fill="#8250df"/>
+  <text class="bullet" x="509" y="284">WebAuthn relying party (RP)</text>
+  <circle cx="495" cy="310" r="3" fill="#8250df"/>
+  <text class="bullet" x="509" y="314">Signs Ed25519 envelopes</text>
+  <circle cx="495" cy="340" r="3" fill="#8250df"/>
+  <text class="bullet" x="509" y="344">Pairing, delivery, replay cache</text>
+  <circle cx="495" cy="370" r="3" fill="#8250df"/>
+  <text class="bullet" x="509" y="374">Never sees the Windows password</text>
+
+  <!-- Windows PC -->
+  <rect x="890" y="140" width="270" height="300" rx="14" fill="#dafbe1" stroke="#aceebb"/>
+  <text class="role" x="914" y="174" fill="#1a7f37">ENDPOINT</text>
+  <text class="card-title" x="914" y="210">Windows PC</text>
+  <text class="card-sub" x="914" y="234">Tray agent + Credential Provider</text>
+  <line class="divider" x1="914" y1="252" x2="1136" y2="252"/>
+  <circle cx="920" cy="280" r="3" fill="#1a7f37"/>
+  <text class="bullet" x="934" y="284">Pins the server key at pairing</text>
+  <circle cx="920" cy="310" r="3" fill="#1a7f37"/>
+  <text class="bullet" x="934" y="314">Verifies signature, expiry, nonce</text>
+  <circle cx="920" cy="340" r="3" fill="#1a7f37"/>
+  <text class="bullet" x="934" y="344">Mints a single-use logon ticket</text>
+  <circle cx="920" cy="370" r="3" fill="#1a7f37"/>
+  <text class="bullet" x="934" y="374">Native C++ Credential Provider</text>
+
+  <!-- Phone <-> backend -->
+  <line x1="318" y1="232" x2="455" y2="232" stroke="#8c959f" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text class="wire" x="387" y="220" text-anchor="middle">① passkey assertion</text>
+  <text class="wire-small" x="387" y="248" text-anchor="middle">HTTPS</text>
+
+  <line x1="457" y1="330" x2="320" y2="330" stroke="#8c959f" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <text class="wire" x="387" y="318" text-anchor="middle">request status</text>
+  <text class="wire-small" x="387" y="346" text-anchor="middle">HTTPS</text>
+
+  <!-- Backend <-> PC -->
+  <line x1="743" y1="232" x2="880" y2="232" stroke="#8c959f" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text class="wire" x="812" y="220" text-anchor="middle">② signed envelope</text>
+  <text class="wire-small" x="812" y="248" text-anchor="middle">HTTPS + WSS</text>
+
+  <line x1="882" y1="330" x2="745" y2="330" stroke="#8c959f" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <text class="wire" x="812" y="318" text-anchor="middle">③ ack + presence</text>
+  <text class="wire-small" x="812" y="346" text-anchor="middle">outbound only</text>
+
+  <!-- Trust boundaries -->
+  <rect x="40" y="490" width="1120" height="210" rx="14" fill="#f6f8fa" stroke="#d8dee4"/>
+  <text class="panel-title" x="72" y="528">Trust boundaries</text>
+  <text class="tb-label" x="72" y="566">Phone → Backend</text>
+  <text class="tb-desc" x="300" y="566">TLS, plus a WebAuthn assertion the server verifies for its single owner</text>
+  <text class="tb-label" x="72" y="606">Backend → PC</text>
+  <text class="tb-desc" x="300" y="606">TLS, plus an Ed25519 envelope checked against the key pinned at pairing</text>
+  <text class="tb-label" x="72" y="646">Phone → PC</text>
+  <text class="tb-desc" x="300" y="646">No direct channel — the PC trusts only a signed envelope from the server</text>
+  <text class="note" x="72" y="682">Fail closed: unreachable server, expired envelope, bad signature, replayed nonce, or revoked device → nothing unlocks.</text>
+</svg>
