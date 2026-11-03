@@ -1,0 +1,87 @@
+name: Bug report
+description: Something in BioUnlock does not behave as documented.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please **do not** paste API tokens, enrollment
+        tokens, signing keys, your backend URL, or your Windows password.
+        Redact hostnames and device names from logs and screenshots.
+
+        Security vulnerabilities belong in a private advisory, not here — see
+        the link on the previous page or `SECURITY.md`.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the problem.
+      placeholder: The tray shows "linked" but the phone never lists the PC.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Android app
+        - Windows agent / tray
+        - Windows Credential Provider
+        - Backend
+        - Documentation
+        - Unsure
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: App / agent / backend version or the commit you built from.
+      placeholder: app 1.0.0, agent 0.1.0, backend 0.2.1, commit d850010
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence that shows the problem.
+      placeholder: |
+        1. Open Settings -> Server and enter my backend URL.
+        2. Tap Test Connection.
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      placeholder: Test Connection reports success.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include the exact error text and whether it is reproducible.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact secrets, hostnames, IP addresses, and device names.
+      render: text
+      placeholder: Paste only the relevant lines.
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed tokens, keys, backend URLs, hostnames, and device names from this report.
+          required: true
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am not reporting a security vulnerability here.
+          required: true
