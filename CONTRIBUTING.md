@@ -24,6 +24,14 @@ Thanks for considering a contribution to BioUnlock!
 - Security-relevant changes get a corresponding entry in
   `docs/threat-model.md` and `docs/security.md`.
 
+## Reporting bugs and requesting features
+
+Use the issue forms: a bug report asks for the component, versions, and a
+reproduction, and a feature request asks how the change fits the single-owner,
+self-hosted design. Redact tokens, backend URLs, hostnames, and device names
+from every report and screenshot. Do **not** open a public issue for a security
+vulnerability — use the private advisory link in `SECURITY.md`.
+
 ## Before opening a pull request
 
 1. Run the relevant test suites:
@@ -33,6 +41,11 @@ Thanks for considering a contribution to BioUnlock!
 2. Keep changes small and focused.
 3. Fill in the PR description with what changed and how it was tested.
 4. Never include generated binaries, `.env`, keys, or build output.
+
+## Releasing
+
+Maintainers: follow [`docs/releasing.md`](docs/releasing.md), which covers
+version bumps, artifact builds, checksums, and the pre-publish leak checklist.
 
 ## Code of conduct
 

@@ -290,6 +290,10 @@ cd mobile/biounlock_mobile && flutter analyze && flutter test   # phone
 
 [GitHub Actions](.github/workflows/ci.yml) runs all three suites — backend and
 agent on Python 3.11, the app on Flutter 3.47 — on every push and pull request.
+CodeQL scans the Python components weekly and on every pull request.
+
+Release notes live in [`CHANGELOG.md`](CHANGELOG.md); the maintainer release
+runbook is [`docs/releasing.md`](docs/releasing.md).
 
 ## Security
 
