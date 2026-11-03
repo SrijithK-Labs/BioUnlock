@@ -73,7 +73,7 @@ opens an inbound port, and Bluetooth or "same Wi-Fi" is never required.
   missing.
 - **One-file installer.** A self-installing tray app that optionally registers the
   Credential Provider and a SYSTEM startup task after a single UAC prompt.
-- **Tested and documented.** 277 automated tests across three languages
+- **Tested and documented.** 285 automated tests across three languages
   (`pytest` for the backend and Windows agent, `flutter test` for the app), CI on
   every push, plus a protocol spec, threat model, and security notes.
 

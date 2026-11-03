@@ -42,6 +42,10 @@ RESTART_DELAY_SECONDS = 5.0
 # WTS_SESSION_STATE values that never carry a signed-in user.
 _NON_USER_STATES = (6, 7, 8)  # WTSListen, WTSReset, WTSDown
 
+# Last probe failure, so a persistent error is logged once instead of on every
+# two-second poll.
+_probe_failure: str | None = None
+
 
 def session_has_signed_in_user(state: Any, username: str | None) -> bool:
     """True when a session still has a signed-in user.
@@ -57,10 +61,15 @@ def session_has_signed_in_user(state: Any, username: str | None) -> bool:
 
 def interactive_user_present() -> bool:
     """True while any session still has a signed-in user."""
+    global _probe_failure
     if os.name != "nt" or not HAS_WIN32TS:
         return False
     try:
-        sessions = win32ts.WTSEnumerateSessions(win32ts.WTS_CURRENT_SERVER_HANDLE, 0, 1)
+        # Call without arguments: some pywin32 builds reject the documented
+        # (*server*, *reserved*, *version*) triple with error 87
+        # ("The parameter is incorrect"), which used to trip the except branch
+        # below and idle the pre-login agent forever.
+        sessions = win32ts.WTSEnumerateSessions()
         for session in sessions:
             session_id = session.get("SessionID", session.get("SessionId", -1))
             if session_id <= 0:
@@ -72,9 +81,22 @@ def interactive_user_present() -> bool:
             except Exception:  # noqa: BLE001
                 username = None
             if session_has_signed_in_user(session.get("State"), username):
+                _probe_failure = None
                 return True
+        _probe_failure = None
         return False
-    except Exception:  # noqa: BLE001 - if the probe fails, let the tray keep control
+    except Exception as exc:  # noqa: BLE001 - fail safe, but never silently
+        # Assume a user is signed in: running a second agent against the same
+        # device key would race the tray on acknowledgements. Log it, though,
+        # because the symptom is "phone unlock does nothing at the sign-in
+        # screen" with no other clue.
+        message = f"{type(exc).__name__}: {exc}"
+        if message != _probe_failure:
+            _probe_failure = message
+            logger.warning(
+                "Could not enumerate sessions, assuming a user is signed in: %s",
+                message,
+            )
         return True
 
 
@@ -144,11 +166,24 @@ if HAS_PYWIN32:  # pragma: no cover - Windows-only
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            idle: bool | None = None
             try:
                 while not self._stop_requested():
                     if interactive_user_present():
+                        if idle is not True:
+                            logger.info(
+                                "Agent service idle: a user is signed in, "
+                                "leaving delivery to the tray"
+                            )
+                            idle = True
                         self._sleep_interruptible(IDLE_POLL_SECONDS)
                     else:
+                        if idle is not False:
+                            logger.info(
+                                "Agent service serving: no signed-in user, "
+                                "waiting for a phone request"
+                            )
+                            idle = False
                         self._run_agent_until_session(loop)
             finally:
                 loop.close()
@@ -216,11 +251,22 @@ def run_foreground() -> int:  # pragma: no cover - Windows-only
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    idle: bool | None = None
     try:
         while True:
             if interactive_user_present():
+                if idle is not True:
+                    logger.info(
+                        "Pre-login agent idle: a user is signed in, leaving delivery to the tray"
+                    )
+                    idle = True
                 time.sleep(IDLE_POLL_SECONDS)
                 continue
+            if idle is not False:
+                logger.info(
+                    "Pre-login agent serving: no signed-in user, waiting for a phone request"
+                )
+                idle = False
             agent = Agent()
             try:
                 if not agent.config.is_enrolled:

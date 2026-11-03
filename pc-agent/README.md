@@ -36,7 +36,7 @@ need Python or any build tools. **The one `.exe` installs everything.**
    and shows each finished step. No admin rights are needed for those parts.
 2. If you keep **Enable unlock at the Windows sign-in screen**, it then asks
    once for elevation (**one UAC prompt**) to do the two things that make
-   logon-screen unlock work **after a restart**: register the bundled Windows
+   logon-screen unlock work **after a restart or a shutdown**: register the bundled Windows
    Credential Provider (the component that signs you in at the real logon
    screen) and install a SYSTEM startup task that receives phone requests
    before anyone has signed in. Declining returns to the finish page with a
@@ -72,6 +72,19 @@ to the console. Passing any `--no-*` flag also implies a scripted run.
 Only one of them normally runs the agent at a time. At sign-in the hand-off
 takes a second or two; a brief overlap is harmless because both share one
 replay store and locking is idempotent.
+
+**Fast Startup.** Windows does not run at-startup tasks when a *shut down* is
+followed by a Fast Startup resume, so the pre-login agent would be missing at
+the sign-in screen. The installer therefore sets `HiberbootEnabled` to `0` and
+reports it as a step. The setting is machine-wide and reversible:
+
+```powershell
+Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' `
+  -Name HiberbootEnabled -Value 1 -Type DWord
+```
+
+With Fast Startup back on, sign-in-screen unlock works after a **restart** but
+not after a **shut down**.
 
 If Windows **Smart App Control** blocks the unsigned `.exe`, install the source
 launcher instead (it runs with `pythonw.exe`, which Smart App Control allows):

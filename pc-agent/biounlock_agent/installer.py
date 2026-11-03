@@ -56,6 +56,10 @@ START_MENU_SUBPATH = r"Microsoft\Windows\Start Menu\Programs"
 # Scheduled task that runs the agent as SYSTEM at boot, before anyone signs in.
 MACHINE_TASK_NAME = "BioUnlockAgent"
 
+# Fast Startup resumes a hibernated kernel, and Windows skips AtStartup tasks on
+# that path, so the installer turns it off to keep the boot agent reliable.
+FAST_STARTUP_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Power"
+
 # Secrets that move from the per-user store to the machine-wide one. The blobs
 # are re-protected with DPAPI machine scope so the SYSTEM task can read them.
 SHARED_SECRET_FILES = ("device_key.bin", "api_token.bin", "windows_credential.bin")
@@ -178,6 +182,18 @@ def _set_autostart(command: str) -> None:
         winreg.SetValueEx(key, AUTOSTART_VALUE, 0, winreg.REG_SZ, command)
 
 
+def fast_startup_enabled() -> bool:
+    """True when Windows would skip the at-startup agent task after a shutdown."""
+    if winreg is None:  # pragma: no cover - non-Windows
+        return False
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, FAST_STARTUP_KEY) as key:
+            value, _ = winreg.QueryValueEx(key, "HiberbootEnabled")
+    except OSError:
+        return False
+    return bool(value)
+
+
 def _create_shortcut(target: Path, arguments: str, workdir: Path, icon: Path | None) -> Path:
     start_menu = Path(os.environ["APPDATA"]) / START_MENU_SUBPATH
     start_menu.mkdir(parents=True, exist_ok=True)
@@ -213,14 +229,36 @@ def provider_script(dll_source: Path, install_user_sid: str | None = None) -> st
         "$exeSource = " + _ps_quote(installed_exe()) + "\n"
         "$exeTarget = Join-Path $installDir 'BioUnlock.exe'\n"
         "if (-not (Test-Path -LiteralPath $exeSource)) { throw 'Installed BioUnlock executable is missing.' }\n"
+        # A pre-login agent from an older install can still be running and holds
+        # its .exe mapped, which makes Windows refuse the overwrite below. Stop
+        # the boot task and the processes running from the target path first;
+        # the installer process itself lives elsewhere, so it is not touched.
+        f"Stop-ScheduledTask -TaskName {_ps_quote(MACHINE_TASK_NAME)} -ErrorAction SilentlyContinue\n"
+        "Get-Process -Name BioUnlock -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.Path -eq $exeTarget } | "
+        "Stop-Process -Force -ErrorAction SilentlyContinue\n"
+        "Start-Sleep -Milliseconds 500\n"
         "& icacls.exe $installDir /reset /T /C | Out-Null\n"
         "if ($LASTEXITCODE -ne 0) { throw 'Could not reset the protected program directory ACL.' }\n"
+        # Directory only, deliberately no /T: the (OI)(CI) inheritance flags are
+        # not valid on a file, and icacls strips a file's ACL instead of adding
+        # the entry, leaving it unreadable even for Administrators. Children
+        # inherit this ACL when they are created below.
         "& icacls.exe $installDir /inheritance:r /grant:r "
-        "'*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /T /C | Out-Null\n"
+        "'*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null\n"
         "if ($LASTEXITCODE -ne 0) { throw 'Could not secure the protected program directory.' }\n"
         "Copy-Item -LiteralPath $exeSource -Destination $exeTarget -Force\n"
         f"$target = Join-Path $installDir '{PROVIDER_DLL_NAME}'\n"
         "Copy-Item -LiteralPath $source -Destination $target -Force\n"
+        # Overwriting an existing file keeps its old ACL, which may be the
+        # broken (empty) one from an earlier install, so set both files
+        # explicitly with file-appropriate (no inheritance) permissions.
+        "& icacls.exe $exeTarget /grant:r "
+        "'*S-1-5-18:F' '*S-1-5-32-544:F' '*S-1-5-32-545:RX' | Out-Null\n"
+        "if ($LASTEXITCODE -ne 0) { throw 'Could not secure the installed program file.' }\n"
+        "& icacls.exe $target /grant:r "
+        "'*S-1-5-18:F' '*S-1-5-32-544:F' '*S-1-5-32-545:RX' | Out-Null\n"
+        "if ($LASTEXITCODE -ne 0) { throw 'Could not secure the credential provider file.' }\n"
         "$shared = Join-Path $env:ProgramData 'BioUnlock'\n"
         "New-Item -ItemType Directory -Force -Path $shared | Out-Null\n"
         + sid_assignment
@@ -239,6 +277,18 @@ def provider_script(dll_source: Path, install_user_sid: str | None = None) -> st
         'Credential Providers\\$clsid"\n'
         "New-Item -Path $cpKey -Force | Out-Null\n"
         "Set-ItemProperty -Path $cpKey -Name '(default)' -Value 'BioUnlock'\n" + startup_task_script()
+        +
+        # Fast Startup (hiberboot) resumes a hibernated kernel instead of
+        # booting, and Windows does not run AtStartup tasks on that path, so a
+        # "shut down" would leave the PC without a pre-login agent. This runs
+        # last and is allowed to fail so it can never block the provider/task.
+        f"$powerKey = 'HKLM:\\{FAST_STARTUP_KEY}'\n"
+        "try {\n"
+        "  Set-ItemProperty -Path $powerKey -Name 'HiberbootEnabled' "
+        "-Value 0 -Type DWord -ErrorAction Stop\n"
+        "} catch {\n"
+        "  Write-Host 'Could not disable Fast Startup:' $_.Exception.Message\n"
+        "}\n"
     )
 
 
@@ -531,6 +581,15 @@ def install_core(
             result.task_ok = code == 0
             if result.provider_ok:
                 done("Windows Credential Provider registered.")
+                if fast_startup_enabled():
+                    logger.warning(
+                        "Windows Fast Startup is still on: the pre-login agent will not "
+                        "start after a shut down, only after a restart."
+                    )
+                else:
+                    done(
+                        "Fast Startup disabled so the pre-login agent runs after every shutdown."
+                    )
                 # The boot task runs as SYSTEM, so the device key and Windows
                 # credential move to the shared, machine-protected store.
                 step("Preparing the machine-wide profile...")

@@ -83,6 +83,72 @@ def test_provider_script_registers_the_startup_task(tmp_path: Path) -> None:
     assert "BioUnlock.exe'" in script
 
 
+def test_provider_script_stops_an_old_agent_before_overwriting_the_exe(
+    tmp_path: Path,
+) -> None:
+    script = installer.provider_script(tmp_path / "BioUnlockProvider.dll")
+
+    stop = script.index("Stop-ScheduledTask -TaskName 'BioUnlockAgent'")
+    copy = script.index("Copy-Item -LiteralPath $exeSource -Destination $exeTarget")
+    assert stop < copy
+
+
+def test_provider_script_secures_files_without_recursive_inheritance_flags(
+    tmp_path: Path,
+) -> None:
+    script = installer.provider_script(tmp_path / "BioUnlockProvider.dll")
+
+    harden_dir = [
+        line for line in script.splitlines() if "icacls.exe $installDir /inheritance:r" in line
+    ]
+    assert len(harden_dir) == 1
+    # /T would apply (OI)(CI) entries to files, which icacls turns into an
+    # empty ACL: the old DLL and EXE became unreadable that way.
+    assert "/T" not in harden_dir[0]
+    assert "icacls.exe $exeTarget /grant:r" in script
+    assert "icacls.exe $target /grant:r" in script
+
+
+def test_provider_script_disables_fast_startup(tmp_path: Path) -> None:
+    script = installer.provider_script(tmp_path / "BioUnlockProvider.dll")
+
+    assert "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power" in script
+    assert "HiberbootEnabled' -Value 0" in script
+
+
+def test_fast_startup_enabled_reads_the_hiberboot_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class _Winreg:
+        HKEY_LOCAL_MACHINE = object()
+
+        @staticmethod
+        def OpenKey(root, path):
+            return _Key()
+
+        @staticmethod
+        def QueryValueEx(key, name):
+            return 1, 4
+
+    monkeypatch.setattr(installer, "winreg", _Winreg)
+    assert installer.fast_startup_enabled() is True
+
+    class _Missing(_Winreg):
+        @staticmethod
+        def QueryValueEx(key, name):
+            raise OSError("not found")
+
+    monkeypatch.setattr(installer, "winreg", _Missing)
+    assert installer.fast_startup_enabled() is False
+
+
 def test_migrate_to_shared_home_moves_config_and_reprotects_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
