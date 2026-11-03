@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/SrijithK-Labs/BioUnlock/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue for them.
+  - name: Documentation
+    url: https://github.com/SrijithK-Labs/BioUnlock/tree/master/docs
+    about: Architecture, protocol, threat model, security notes, and build guides.

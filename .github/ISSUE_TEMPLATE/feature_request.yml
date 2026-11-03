@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest a change that fits BioUnlock's single-owner, self-hosted design.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        BioUnlock is intentionally small: self-hosted, single-owner, and without
+        accounts, telemetry, or cloud services. Proposals that add a hosted
+        dependency or weaken the existing trust model are unlikely to be
+        accepted. Please describe the problem before the solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+      placeholder: I keep several machines and have to re-link each one by hand.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should BioUnlock do instead? Keep it concrete.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Android app
+        - Windows agent / tray
+        - Windows Credential Provider
+        - Backend
+        - Documentation
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds, or why a smaller change would not do.
+    validations:
+      required: false
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and privacy impact
+      description: |
+        Does this touch pairing, envelope verification, secret storage, the
+        Credential Provider, or the network surface? Say how the change keeps
+        them safe. Write "none" if it does not.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed tokens, keys, backend URLs, hostnames, and device names from this request.
+          required: true
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
