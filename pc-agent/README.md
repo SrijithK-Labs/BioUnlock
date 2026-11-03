@@ -23,12 +23,12 @@ start/stop the background agent. It starts automatically at login.
 
 ## Install (end users)
 
-Download the prebuilt `BioUnlock-0.1.0-windows-x64.exe` from
+Download the prebuilt `BioUnlock-1.0.1-windows-x64.exe` from
 [**Releases**](https://github.com/SrijithK-Labs/BioUnlock/releases) — you do not
 need Python or any build tools. **The one `.exe` installs everything.**
 
 1. Double-click the `.exe` (or run
-   `BioUnlock-0.1.0-windows-x64.exe install` from a terminal). Because it is not
+   `BioUnlock-1.0.1-windows-x64.exe install` from a terminal). Because it is not
    installed yet, it opens a small setup wizard:
    **Welcome → Choose your setup → Install → Finish**. On the options page you
    can turn off sign-in unlock, start-at-login, the Start Menu shortcut, or the

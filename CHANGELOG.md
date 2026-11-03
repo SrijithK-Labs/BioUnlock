@@ -12,6 +12,37 @@ version; it is not necessarily the version of every component.
 
 Nothing yet.
 
+## [1.0.1] - 2026-11-03
+
+Fixes for the pre-login unlock path (the Windows sign-in screen).
+
+**Components:** Windows agent `1.0.1`. The Android app (`1.0.0`) and the
+backend (`0.2.1`) are unchanged from `1.0.0`.
+
+### Fixed
+
+- Phone unlock did nothing at the Windows sign-in screen after a shut down or a
+  restart, while it worked once a user was signed in. The session probe called
+  `win32ts.WTSEnumerateSessions` with arguments that this pywin32 build rejects
+  (error 87), and the failure was swallowed as "a user is signed in", so the
+  SYSTEM boot agent idled forever and never contacted the backend. The probe
+  now uses the supported call, logs a failure instead of hiding it, and the
+  agent logs its idle/serving state so the hand-off is visible in the log.
+- The installer could leave `BioUnlock.exe` and `BioUnlockProvider.dll` under
+  `%ProgramFiles%` unreadable: `icacls` was asked to add inheritance entries to
+  files, which stores an empty protected DACL instead, so the credential
+  provider could not load at the sign-in screen. The installer now hardens the
+  folder and the two files separately, and stops a running pre-login agent
+  before overwriting its executable.
+- Windows Fast Startup resumes a hibernated kernel and does not run at-startup
+  tasks, so a shut down left the PC without a pre-login agent at all. The
+  installer now disables Fast Startup and reports it as a step.
+
+### Changed
+
+- The PC agent is versioned `1.0.1`; the Windows download is
+  `BioUnlock-1.0.1-windows-x64.exe`.
+
 ## [1.0.0] - 2026-11-01
 
 First public release.

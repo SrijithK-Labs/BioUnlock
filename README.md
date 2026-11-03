@@ -94,15 +94,15 @@ Prebuilt artifacts are attached to
 
 | Platform | Files | What it is |
 | --- | --- | --- |
-| Windows | `BioUnlock-0.1.0-windows-x64.exe` | Self-installing tray app that links and controls the PC |
+| Windows | `BioUnlock-1.0.1-windows-x64.exe` | Self-installing tray app that links and controls the PC |
 | Android | `BioUnlock-1.0.0-android.apk` | Phone authenticator (passkey) |
 
-**Windows app:** download `BioUnlock-0.1.0-windows-x64.exe` and double-click it.
+**Windows app:** download `BioUnlock-1.0.1-windows-x64.exe` and double-click it.
 It installs itself — one file, no separate script — through a small setup
 wizard. From a terminal, run:
 
 ```powershell
-.\BioUnlock-0.1.0-windows-x64.exe install
+.\BioUnlock-1.0.1-windows-x64.exe install
 ```
 
 The wizard lets you choose sign-in unlock, start-at-login, the Start Menu
@@ -111,11 +111,11 @@ copies the app to `%LOCALAPPDATA%\BioUnlock` and launches the tray icon. No
 admin rights are needed for that. If sign-in unlock stays enabled, it then asks
 once for elevation (**one UAC prompt**) to register the bundled Windows
 Credential Provider and a SYSTEM startup task, which together power
-logon-screen unlock — including after a restart; declining shows a Retry button
+logon-screen unlock — including after a restart or a shutdown; declining shows a Retry button
 and just skips that step. That same prompt moves the agent's profile to
 `%ProgramData%\BioUnlock` and migrates an existing link automatically. For
 scripted installs run
-`.\BioUnlock-0.1.0-windows-x64.exe install --silent`. If Windows **Smart App
+`.\BioUnlock-1.0.1-windows-x64.exe install --silent`. If Windows **Smart App
 Control** blocks the unsigned `.exe`, install from source with
 `powershell -ExecutionPolicy Bypass -File pc-agent\install-agent.ps1 -FromSource`
 (it launches via `pythonw.exe`, which Smart App Control allows).
@@ -230,9 +230,10 @@ troubleshooting.
 
 ### 3. Windows app
 
-Install `BioUnlock-0.1.0-windows-x64.exe` — it is self-installing (per-user, no admin needed) and
+Install `BioUnlock-1.0.1-windows-x64.exe` — it is self-installing (per-user, no admin needed) and
 bundles the Credential Provider plus a SYSTEM startup task, both registered after
-one UAC prompt so logon-screen unlock keeps working after a restart. Then in
+one UAC prompt so logon-screen unlock keeps working after a restart or a
+shutdown. Then in
 the tray app enter the backend **URL** and **API key** and click **Link this PC**,
 scanning the QR code with the phone. The API key is needed because linking
 enrolls the PC through the backend's `POST /api/v1/devices/enroll` endpoint, which your
