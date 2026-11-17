@@ -37,7 +37,7 @@ dependencies:
   http: ^1.6.0
   provider: ^6.1.5+1
   flutter_secure_storage: ^11.2.0
-  mobile_scanner: ^7.4.2
+  mobile_scanner: ^7.5.0
   passkeys: ^2.23.1
 
 dev_dependencies:
